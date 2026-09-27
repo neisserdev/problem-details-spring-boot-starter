@@ -1,13 +1,8 @@
 # problem-details-spring-boot-starter
-
-Manejo de errores [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) (Problem Details) para Spring Boot 4 y Spring MVC. Se añade la dependencia y toda la API responde los errores con el mismo `application/problem+json`, vengan de tu dominio, de Spring MVC, de la validación o de Spring Security.
-
-Requisitos: Java 17 o superior, Spring Boot 4 y una aplicación servlet (Spring MVC). WebFlux no está soportado.
-
+Implementación estándar de manejo de errores basados en RFC 9457 (Problem Details) para Spring Boot 4 y Spring MVC. Al integrar esta dependencia, toda la API unifica sus respuestas de error bajo el formato application/problem+json, abarcando la capa de dominio, el enrutamiento de Spring MVC, las validaciones y Spring Security.
+Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). WebFlux no está soportado.
 ## Instalación
-
 Maven
-
 ```xml
 <dependency>
     <groupId>io.github.neisserdev</groupId>
@@ -15,32 +10,25 @@ Maven
     <version>0.1.0</version>
 </dependency>
 ```
-
 Gradle
-
 ```kotlin
 implementation("io.github.neisserdev:problem-details-spring-boot-starter:0.1.0")
 ```
+El starter es ligero y no impone dependencias transitivas. Se adapta dinámicamente a las dependencias presentes en el classpath del proyecto (spring-boot-starter-webmvc, spring-boot-starter-security, etc.).
+## Registro Automático de Componentes
+La autoconfiguración inicializa los siguientes componentes según el contexto:
 
-El starter no arrastra Spring MVC, Jackson ni Spring Security. Usa los que ya traiga tu proyecto (`spring-boot-starter-webmvc`, `spring-boot-starter-security`...) y se adapta a lo que encuentre.
+| Bean | Condición de registro |
+| :--- | :--- |
+| ProblemDetailsFactory | Siempre activo en aplicaciones servlet. |
+| GlobalExceptionHandler | Activo si no existe otro ResponseEntityExceptionHandler en el contexto. |
+| ProblemJsonWriter | Activo si existe un JsonMapper de Jackson 3 (provisto por defecto en Spring Boot). |
+| SecurityAuthenticationEntryPoint (401) | Activo si Spring Security está presente y problem-details.security.enabled es true. |
+| SecurityAccessDeniedHandler (403) | Activo si Spring Security está presente y problem-details.security.enabled es true. |
+| Conexión con http.exceptionHandling() | Configuración automática inyectada en el SecurityFilterChain. |
 
-## Qué registra
-
-Sin escribir código ni configuración:
-
-| Bean | Cuándo |
-|------|--------|
-| `ProblemDetailsFactory` | Siempre en una app servlet |
-| `GlobalExceptionHandler` | Si no defines otro `ResponseEntityExceptionHandler` |
-| `ProblemJsonWriter` | Si hay un `JsonMapper` de Jackson 3 (lo crea Spring Boot) |
-| `SecurityAuthenticationEntryPoint` (401) | Si Spring Security está en el classpath y `problem-details.security.enabled` no es `false` |
-| `SecurityAccessDeniedHandler` (403) | Igual que el anterior |
-| Conexión con `http.exceptionHandling()` | Igual que el anterior; no hace falta tocar tu `SecurityFilterChain` |
-
-Todos se retiran si declaras un bean propio del mismo tipo. Tampoco hace falta `spring.mvc.problemdetails.enabled`: el manejador del starter sustituye al que activa esa propiedad.
-
-## Forma de la respuesta
-
+Estos beans retroceden (*back-off*) automáticamente si se declara un componente personalizado del mismo tipo. No es necesario habilitar explícitamente spring.mvc.problemdetails.enabled; el manejador del starter sustituye la implementación por defecto de Spring.
+## Formato de la Respuesta
 ```json
 {
   "type": "https://api.ejemplo.com/problemas/RESOURCE_NOT_FOUND",
@@ -54,113 +42,88 @@ Todos se retiran si declaras un bean propio del mismo tipo. Tampoco hace falta `
   "resourceId": "7"
 }
 ```
-
-- `type` es la base configurada más el código.
-- `code` es estable y está en toda respuesta, incluidos los 404, 405, 415 o 401 que genera el framework. Un cliente puede hacer `switch` sobre él sin mirar el status.
-- `timestamp` e `instance` también están siempre.
-- Los miembros de extensión (`resource`, `resourceId`...) van en la raíz del JSON, como pide el RFC.
-
+ * type: URI base configurada concatenada con el código de error.
+ * code: Identificador estable presente en toda respuesta, incluyendo los errores generados por el framework (404, 405, 415, 401). Permite a los clientes de la API implementar lógicas condicionales (switch) sin depender exclusivamente del status HTTP.
+ * timestamp e instance: Atributos garantizados en cada respuesta.
+ * Los miembros de extensión (resource, resourceId) se serializan en el nivel raíz del JSON, en estricto cumplimiento del RFC.
 ## Configuración
-
 ```yaml
 problem-details:
-  base-type-url: https://api.ejemplo.com/problemas/   # por defecto /problems/
+  base-type-url: https://api.ejemplo.com/problemas/   # Valor por defecto: /problems/
   security:
-    enabled: true              # false: no registra ni conecta el 401 y el 403
-    www-authenticate: Bearer   # vacío: no se envía la cabecera en los 401
+    enabled: true              # false: desactiva la inyección automática para 401 y 403
+    www-authenticate: Bearer   # vacío: omite la cabecera en respuestas 401
 ```
-
-`base-type-url` admite una ruta relativa (el RFC la permite si incluye la ruta completa) o una URL absoluta. Lo recomendable en producción es una URL tuya que sirva documentación de cada código. Si no termina en `/`, `:`, `#` o `=` se le añade una barra, y si no forma un URI válido la aplicación no arranca, para enterarte en el despliegue y no con el primer error en producción.
-
-`security.enabled=false` desactiva solo la integración con Spring Security. `ProblemJsonWriter` sigue registrado porque no es exclusivo de seguridad: lo usan también filtros propios como un limitador de peticiones (ver más abajo).
-
-## Lanzar errores
-
-La librería trae excepciones para los casos habituales:
-
+La propiedad base-type-url admite rutas relativas (permitidas por el RFC si incluyen la ruta completa) o URLs absolutas. Para entornos productivos, se recomienda una URL resoluble que apunte a la documentación de los códigos de error. El sistema de inicialización valida la correcta formación de la URI durante el arranque y añade automáticamente separadores (/, :, # o =) si faltan, previniendo fallos silenciosos en producción.
+*Nota:* security.enabled=false desactiva únicamente la integración automática con Spring Security. ProblemJsonWriter permanece disponible para su uso en filtros personalizados.
+## Excepciones Base
+El starter incluye excepciones predefinidas para los flujos de negocio más comunes:
 ```java
-throw new ResourceNotFoundException("Pedido", id);                  // 404
+throw new ResourceNotFoundException("Pedido", id);                   // 404
 throw new ResourceConflictException("El email ya está registrado");  // 409
 throw new BusinessRuleViolationException("El pedido ya se envió");   // 422
 ```
+Catálogo predefinido en ErrorCode:
 
-Y un catálogo de códigos en `ErrorCode`:
+| Código | Status HTTP |
+| :--- | :--- |
+| VALIDATION_ERROR, MALFORMED_REQUEST, TYPE_MISMATCH, CONSTRAINT_VIOLATION | 400 |
+| UNAUTHORIZED, INVALID_CREDENTIALS, INVALID_REFRESH_TOKEN, ACCOUNT_UNAVAILABLE | 401 |
+| ACCESS_DENIED, ORIGIN_NOT_ALLOWED | 403 |
+| RESOURCE_NOT_FOUND, ENDPOINT_NOT_FOUND | 404 |
+| METHOD_NOT_ALLOWED | 405 |
+| NOT_ACCEPTABLE | 406 |
+| EMAIL_ALREADY_REGISTERED, RESOURCE_CONFLICT | 409 |
+| CONTENT_TOO_LARGE | 413 |
+| UNSUPPORTED_MEDIA_TYPE | 415 |
+| BUSINESS_RULE_VIOLATION | 422 |
+| TOO_MANY_REQUESTS | 429 |
+| INTERNAL_ERROR | 500 |
+| SERVICE_UNAVAILABLE | 503 |
 
-| Código | Status |
-|--------|--------|
-| `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `CONSTRAINT_VIOLATION` | 400 |
-| `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INVALID_REFRESH_TOKEN`, `ACCOUNT_UNAVAILABLE` | 401 |
-| `ACCESS_DENIED`, `ORIGIN_NOT_ALLOWED` | 403 |
-| `RESOURCE_NOT_FOUND`, `ENDPOINT_NOT_FOUND` | 404 |
-| `METHOD_NOT_ALLOWED` | 405 |
-| `NOT_ACCEPTABLE` | 406 |
-| `EMAIL_ALREADY_REGISTERED`, `RESOURCE_CONFLICT` | 409 |
-| `CONTENT_TOO_LARGE` | 413 |
-| `UNSUPPORTED_MEDIA_TYPE` | 415 |
-| `BUSINESS_RULE_VIOLATION` | 422 |
-| `TOO_MANY_REQUESTS` | 429 |
-| `INTERNAL_ERROR` | 500 |
-| `SERVICE_UNAVAILABLE` | 503 |
-
-Los nombres siguen RFC 9110, igual que Spring Framework 7 (que deprecó `PAYLOAD_TOO_LARGE` y `UNPROCESSABLE_ENTITY`). Si el framework responde con un status que no está en la tabla, como un 410, el código se deriva del status (`GONE`) y nunca de una constante deprecada de Spring.
-
-## Errores propios
-
-No hace falta tocar la librería. Declara tu catálogo implementando `ProblemType` y una excepción que extienda `BusinessException`:
-
+La nomenclatura se alinea con el estándar RFC 9110 y Spring Framework 7. Si el framework emite un estado HTTP no contemplado explícitamente en la tabla, el código de negocio se deriva semánticamente del status.
+## Extensibilidad de Dominio
+El diseño permite extender el manejo de errores definiendo catálogos de negocio propios. Se requiere implementar la interfaz ProblemType y crear una excepción que extienda de BusinessException:
 ```java
 public enum ErroresDeTienda implements ProblemType {
-
     STOCK_INSUFICIENTE("Stock insuficiente", HttpStatus.CONFLICT),
     CUPON_CADUCADO("Cupón caducado", HttpStatus.UNPROCESSABLE_CONTENT);
-
     private final String titulo;
     private final HttpStatus status;
-
     ErroresDeTienda(String titulo, HttpStatus status) {
         this.titulo = titulo;
         this.status = status;
     }
-
     @Override public String getCode() { return name(); }
     @Override public String getTitle() { return titulo; }
     @Override public HttpStatusCode getHttpStatus() { return status; }
 }
 ```
-
 ```java
 public class StockInsuficienteException extends BusinessException {
-
     private final int disponible;
-
     public StockInsuficienteException(int disponible) {
         super(ErroresDeTienda.STOCK_INSUFICIENTE, "Solo quedan %d unidades".formatted(disponible));
         this.disponible = disponible;
     }
-
     @Override
     public Map<String, Object> getProperties() {
-        return Map.of("disponible", disponible);   // se añade a la raíz del JSON
+        return Map.of("disponible", disponible);   // Se inyecta en la raíz del JSON
     }
 }
 ```
-
-El código tiene que poder ir dentro de un URI; la convención es `MAYUSCULAS_CON_GUIONES_BAJOS`. Las claves `code` y `timestamp` están reservadas y se ignoran si aparecen en `getProperties()`.
-
-## Validación
-
-Las tres vías de validación responden con la misma forma, así el cliente procesa los errores de una sola manera:
-
-- `@Valid @RequestBody` produce `VALIDATION_ERROR`.
-- Restricciones en `@RequestParam` o `@PathVariable` (validación integrada de Spring MVC) producen `CONSTRAINT_VIOLATION`.
-- Restricciones en clases con `@Validated` (`ConstraintViolationException`) producen `CONSTRAINT_VIOLATION`.
-
+El identificador code debe ser apto para componer una URI (convención recomendada: MAYUSCULAS_CON_GUIONES_BAJOS). Las claves code y timestamp están reservadas por el estándar y se omitirán si se incluyen de forma duplicada en getProperties().
+## Validación de Datos
+Las distintas vías de validación unifican su salida bajo una misma estructura para simplificar el consumo por parte de la aplicación cliente:
+ * @Valid @RequestBody genera VALIDATION_ERROR.
+ * Restricciones en @RequestParam o @PathVariable generan CONSTRAINT_VIOLATION.
+ * Violaciones a nivel de clase (@Validated / ConstraintViolationException) generan CONSTRAINT_VIOLATION.
 ```json
 {
   "type": "/problems/VALIDATION_ERROR",
   "title": "Error de validación",
   "status": 400,
-  "detail": "no debe estar vacío debe ser una dirección de correo electrónico con formato correcto",
+  "detail": "no debe estar vacío, debe ser una dirección de correo electrónico con formato correcto",
   "instance": "/usuarios",
   "timestamp": "2026-09-27T18:42:10.512Z",
   "code": "VALIDATION_ERROR",
@@ -171,13 +134,9 @@ Las tres vías de validación responden con la misma forma, así el cliente proc
   "count": 2
 }
 ```
-
-En los parámetros, `campo` es el nombre que ve el cliente (`@RequestParam("n")` sale como `n`). Los fallos de reglas de clase entre varios campos salen con `campo` vacío.
-
-## Spring Security
-
-Con Spring Security en el classpath el starter conecta solo el entry point 401 y el manejador 403 a cada `HttpSecurity`, gracias a los beans `Customizer` que Spring Security 7 aplica automáticamente. Tu cadena puede quedarse así:
-
+En los parámetros de entrada, el atributo campo refleja el nombre expuesto en la API (@RequestParam("n") se serializa como "n"). Los errores de validación a nivel de clase que involucran múltiples propiedades exponen el atributo campo vacío.
+## Integración con Spring Security
+Con Spring Security presente, el starter inyecta el entry point (401) y el handler (403) en la cadena de filtros mediante beans Customizer de Spring Security 7. La configuración declarativa mantiene una estructura limpia:
 ```java
 @Bean
 SecurityFilterChain api(HttpSecurity http) throws Exception {
@@ -188,18 +147,13 @@ SecurityFilterChain api(HttpSecurity http) throws Exception {
             .build();
 }
 ```
-
-Comportamiento:
-
-- Petición anónima a un recurso protegido: 401 `UNAUTHORIZED` con `WWW-Authenticate: Bearer`.
-- Usuario autenticado sin permisos: 403 `ACCESS_DENIED`.
-- `AccessDeniedException` lanzada dentro de un controlador o servicio (por ejemplo por `@PreAuthorize`): el manejador la devuelve a Spring Security, que responde 401 si la petición es anónima y 403 si no. Antes se respondía siempre 403, que es incorrecto para un anónimo.
-- `BadCredentialsException` que llega al controlador (un login que llama al `AuthenticationManager`): 401 `INVALID_CREDENTIALS`.
-
-Si tu cadena llama a `.exceptionHandling(...)` explícitamente, tu configuración gana: la del starter se aplica antes.
-
-Algunos filtros tienen su propio entry point y no pasan por `exceptionHandling()`. Es el caso de `oauth2ResourceServer` con un token inválido o caducado y de `httpBasic` con credenciales incorrectas. Para que también respondan en problem+json, pásales el bean:
-
+Comportamiento estándar:
+ * **Petición anónima a recurso protegido:** 401 UNAUTHORIZED con cabecera WWW-Authenticate.
+ * **Usuario autenticado sin permisos:** 403 ACCESS_DENIED.
+ * **AccessDeniedException en capa de servicio:** (ej. mediante @PreAuthorize). El manejador delega a Spring Security, retornando 401 para usuarios anónimos y 403 para autenticados, corrigiendo la respuesta 403 por defecto de Spring MVC.
+ * **BadCredentialsException en controlador:** 401 INVALID_CREDENTIALS.
+Si la configuración invoca .exceptionHandling(...) explícitamente, esta tiene precedencia sobre la autoconfiguración.
+Para componentes de seguridad que capturan errores antes de llegar al exceptionHandling (como oauth2ResourceServer con un token caducado o httpBasic), es necesario pasar explícitamente la referencia del entry point:
 ```java
 @Bean
 SecurityFilterChain api(HttpSecurity http, SecurityAuthenticationEntryPoint entryPoint) throws Exception {
@@ -211,23 +165,15 @@ SecurityFilterChain api(HttpSecurity http, SecurityAuthenticationEntryPoint entr
             .build();
 }
 ```
-
-Si usas un filtro JWT propio que rechaza tokens por su cuenta, inyecta `ProblemJsonWriter` como en la sección siguiente.
-
-## Filtros propios
-
-Los errores que ocurren en un filtro no llegan a ningún `@RestControllerAdvice`. `ProblemJsonWriter` escribe la misma respuesta que produciría el manejador:
-
+## Manejo de Errores en Filtros Personalizados
+Las excepciones originadas dentro de filtros (Filter o OncePerRequestFilter) no son interceptadas por los @RestControllerAdvice. Para serializar la respuesta bajo el mismo formato RFC 9457 en la capa de filtros, se debe inyectar el componente ProblemJsonWriter:
 ```java
 @Component
 class LimiteDePeticionesFilter extends OncePerRequestFilter {
-
     private final ProblemJsonWriter writer;
-
     LimiteDePeticionesFilter(ProblemJsonWriter writer) {
         this.writer = writer;
     }
-
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
@@ -240,23 +186,16 @@ class LimiteDePeticionesFilter extends OncePerRequestFilter {
     }
 }
 ```
-
-Usa el `JsonMapper` de Spring Boot, que es el que sabe poner las extensiones en la raíz del JSON. Con un `JsonMapper` construido a mano, `code` y `timestamp` saldrían anidados bajo `properties`.
-
-## Personalizar
-
-Tus `@RestControllerAdvice` se consultan antes que el del starter, que va con la menor precedencia. Para una excepción concreta basta con manejarla en tu propio advice.
-
-Para cambiar el comportamiento general, extiende el manejador. Al existir tu subclase, el del starter se retira:
-
+Esta herramienta utiliza el JsonMapper central para garantizar que los atributos de extensión se acoplen correctamente en el nivel raíz del documento.
+## Modificación del Comportamiento Base
+Los componentes @RestControllerAdvice del proyecto tienen prioridad sobre el manejador global del starter. Para sobrescribir una respuesta específica, basta con manejar la excepción en un componente local.
+Para alterar el comportamiento general, se debe extender la clase GlobalExceptionHandler. La autoconfiguración detectará la nueva instancia y desactivará el manejador por defecto:
 ```java
 @RestControllerAdvice
 class ManejadorDeErrores extends GlobalExceptionHandler {
-
     ManejadorDeErrores(ProblemDetailsFactory fabrica, ProblemDetailsProperties propiedades) {
         super(fabrica, propiedades.getSecurity().isEnabled());
     }
-
     @ExceptionHandler(OptimisticLockingFailureException.class)
     ProblemDetail edicionConcurrente(OptimisticLockingFailureException ex, HttpServletRequest request) {
         return getFabrica().crear(ErrorCode.RESOURCE_CONFLICT,
@@ -264,15 +203,10 @@ class ManejadorDeErrores extends GlobalExceptionHandler {
     }
 }
 ```
-
-Cualquier otro bean (`ProblemDetailsFactory`, `ProblemJsonWriter`, el entry point o el manejador 403) se sustituye declarando uno propio del mismo tipo.
-
+Este patrón de sustitución aplica a cualquier componente central (ProblemDetailsFactory, ProblemJsonWriter, Entry Points).
 ## Limitaciones
-
-- Solo Spring MVC. En WebFlux la autoconfiguración no se activa.
-- Una excepción lanzada en un filtro propio que no la capture termina en la página `/error` de Spring Boot, que tiene su propio formato. Captúrala y usa `ProblemJsonWriter`.
-- Compilado y probado con Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). Las APIs que usa existen desde Boot 4.0, pero 4.0.x no está en las pruebas.
-
+ * Compatibilidad exclusiva con entornos Servlet (Spring MVC). No aplicable a aplicaciones WebFlux.
+ * Excepciones no capturadas en filtros personalizados son delegadas al BasicErrorController de Spring Boot. Se recomienda implementar bloques try/catch y utilizar ProblemJsonWriter.
+ * Compilado y testeado con Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). No se garantiza compatibilidad total con la serie 4.0.x.
 ## Licencia
-
-[MIT](LICENSE)
+MIT
