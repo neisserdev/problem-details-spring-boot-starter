@@ -273,21 +273,6 @@ Cualquier otro bean (`ProblemDetailsFactory`, `ProblemJsonWriter`, el entry poin
 - Una excepción lanzada en un filtro propio que no la capture termina en la página `/error` de Spring Boot, que tiene su propio formato. Captúrala y usa `ProblemJsonWriter`.
 - Compilado y probado con Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). Las APIs que usa existen desde Boot 4.0, pero 4.0.x no está en las pruebas.
 
-## Migrar desde dev.neisser.exceptions
-
-1. Borra el paquete copiado en tu proyecto y añade la dependencia.
-2. Cambia los imports de `dev.neisser.exceptions` a `io.github.neisserdev.problemdetails` (y `.security`).
-3. Quita el cableado manual de `SecurityConfig`. Si prefieres dejar `.exceptionHandling(...)`, inyecta los beans del starter en lugar de instanciar las clases.
-4. `BusinessException.getErrorCode()` pasa a ser `getProblemType()` y devuelve un `ProblemType`. `ErrorCode` lo implementa, así que `ErrorCode.X` sigue funcionando donde lo usabas.
-5. La clase estática `ProblemDetails` pasa a ser el bean `ProblemDetailsFactory` (`of` se llama `crear`, `typeDe` se llama `tipoDe`).
-6. `ErrorCode.PAYLOAD_TOO_LARGE` pasa a ser `CONTENT_TOO_LARGE`, y cambia el `code` que ve el cliente en los 413.
-7. `ErrorCode.porStatus(int)` devuelve `Optional`. Un status sin representante ya no sale como `INTERNAL_ERROR` sino con un código derivado (`GONE`, `PAYMENT_REQUIRED`...).
-8. Los errores de `ConstraintViolationException` salen en `errores` como lista de `{campo, mensaje}` en vez de `errors` como lista de textos.
-9. La base del `type` era fija (`https://neisser.dev/problems/`). Ahora es `/problems/` por defecto; configura `problem-details.base-type-url` si quieres conservar la anterior.
-10. El manejador pasó de la mayor a la menor precedencia, para no tapar los advices de la aplicación.
-11. `AccessDeniedException` dentro de un controlador responde 401 si la petición es anónima (antes siempre 403).
-12. Las excepciones anotadas con `@ResponseStatus` conservan su status en lugar de responder 500.
-
 ## Licencia
 
 [MIT](LICENSE)
