@@ -12,7 +12,7 @@ import org.springframework.http.HttpStatus;
  * Catálogo base de errores. Cada valor define el código, el título y el status HTTP.
  *
  * <p>Los errores de Spring MVC (método no permitido, ruta inexistente, etc.)
- * también reciben un código de este catálogo mediante {@link #porStatus(int)}.
+ * también reciben un código de este catálogo mediante {@link #forStatus(int)}.
  *
  * <p>Para errores propios se implementa {@link ProblemType} en un enum aparte.
  *
@@ -66,7 +66,7 @@ public enum ErrorCode implements ProblemType {
     public HttpStatus getHttpStatus() { return httpStatus; }
 
     // Representante de cada status para los errores del framework
-    private static final Map<Integer, ErrorCode> POR_STATUS = Stream.of(
+    private static final Map<Integer, ErrorCode> BY_STATUS = Stream.of(
                     MALFORMED_REQUEST,      // 400
                     UNAUTHORIZED,           // 401
                     ACCESS_DENIED,          // 403
@@ -90,7 +90,7 @@ public enum ErrorCode implements ProblemType {
      * @param status valor numérico del status HTTP
      * @return el código del status, si existe
      */
-    public static Optional<ErrorCode> porStatus(int status) {
-        return Optional.ofNullable(POR_STATUS.get(status));
+    public static Optional<ErrorCode> forStatus(int status) {
+        return Optional.ofNullable(BY_STATUS.get(status));
     }
 }

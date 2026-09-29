@@ -17,7 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
  * en filtros, donde los errores no llegan al {@code @RestControllerAdvice}.
  *
  * <pre>{@code
- * writer.escribir(response, request, ErrorCode.TOO_MANY_REQUESTS,
+ * writer.write(response, request, ErrorCode.TOO_MANY_REQUESTS,
  *         "Has superado el límite de peticiones", "Retry-After", "30");
  * }</pre>
  *
@@ -27,70 +27,70 @@ import tools.jackson.databind.json.JsonMapper;
 public class ProblemJsonWriter {
 
     private final JsonMapper jsonMapper;
-    private final ProblemDetailsFactory fabrica;
+    private final ProblemDetailsFactory factory;
 
     /**
      * @param jsonMapper mapper del contexto de Spring
-     * @param fabrica    factory con la que se construyen los problemas
+     * @param factory    factory con la que se construyen los problemas
      */
-    public ProblemJsonWriter(JsonMapper jsonMapper, ProblemDetailsFactory fabrica) {
+    public ProblemJsonWriter(JsonMapper jsonMapper, ProblemDetailsFactory factory) {
         this.jsonMapper = Objects.requireNonNull(jsonMapper, "jsonMapper");
-        this.fabrica = Objects.requireNonNull(fabrica, "fabrica");
+        this.factory = Objects.requireNonNull(factory, "factory");
     }
 
     /**
      * @return la factory con la que se construyen los problemas
      */
-    public ProblemDetailsFactory getFabrica() {
-        return fabrica;
+    public ProblemDetailsFactory getFactory() {
+        return factory;
     }
 
     /**
      * @param response respuesta en la que escribir
      * @param request  petición en curso, para el {@code instance}
-     * @param tipo     tipo de problema
-     * @param detalle  explicación específica de esta ocurrencia
+     * @param type     tipo de problema
+     * @param detail   explicación específica de esta ocurrencia
      * @throws IOException si falla la escritura en la respuesta
      */
-    public void escribir(HttpServletResponse response, HttpServletRequest request,
-                         ProblemType tipo, String detalle) throws IOException {
-        escribir(response, request, tipo, detalle, null, null);
+    public void write(HttpServletResponse response, HttpServletRequest request,
+                      ProblemType type, String detail) throws IOException {
+        write(response, request, type, detail, null, null);
     }
 
     /**
-     * @param response       respuesta en la que escribir
-     * @param request        petición en curso, para el {@code instance}
-     * @param tipo           tipo de problema
-     * @param detalle        explicación específica de esta ocurrencia
-     * @param nombreCabecera cabecera adicional, por ejemplo {@code Retry-After}, o {@code null}
-     * @param cabecera       valor de esa cabecera, o {@code null}
+     * @param response    respuesta en la que escribir
+     * @param request     petición en curso, para el {@code instance}
+     * @param type        tipo de problema
+     * @param detail      explicación específica de esta ocurrencia
+     * @param headerName  cabecera adicional, por ejemplo {@code Retry-After}, o {@code null}
+     * @param headerValue valor de esa cabecera, o {@code null}
      * @throws IOException si falla la escritura en la respuesta
      */
-    public void escribir(HttpServletResponse response, HttpServletRequest request,
-                         ProblemType tipo, String detalle,
-                         String nombreCabecera, String cabecera) throws IOException {
+    public void write(HttpServletResponse response, HttpServletRequest request,
+                      ProblemType type, String detail,
+                      String headerName, String headerValue) throws IOException {
 
-        if (nombreCabecera != null && cabecera != null && !response.isCommitted()) {
-            response.setHeader(nombreCabecera, cabecera);
+        if (headerName != null && headerValue != null && !response.isCommitted()) {
+            response.setHeader(headerName, headerValue);
         }
-        escribir(response, fabrica.crear(tipo, detalle, request.getRequestURI()));
+        write(response, factory.create(type, detail, request.getRequestURI()));
     }
 
     /**
      * Escribe un problema ya construido, por ejemplo con extensiones propias.
      *
      * @param response respuesta en la que escribir
-     * @param problema problema a serializar, su {@code status} es el de la respuesta
+     * @param problem  problema a serializar, su {@code status} es el de la respuesta
      * @throws IOException si falla la escritura en la respuesta
      */
-    public void escribir(HttpServletResponse response, ProblemDetail problema) throws IOException {
+    public void write(HttpServletResponse response, ProblemDetail problem) throws IOException {
         // Respuesta ya enviada, no se puede escribir
         if (response.isCommitted()) {
             return;
         }
-        response.setStatus(problema.getStatus());
+        response.setStatus(problem.getStatus());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write(jsonMapper.writeValueAsString(problema));
+        response.getWriter().write(jsonMapper.writeValueAsString(problem));
     }
 }

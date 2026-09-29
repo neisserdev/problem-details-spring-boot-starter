@@ -13,6 +13,8 @@ import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
  *   security:
  *     enabled: true
  *     www-authenticate: Bearer
+ *   trace-id:
+ *     enabled: true
  * </pre>
  */
 @ConfigurationProperties(prefix = "problem-details")
@@ -22,9 +24,11 @@ public class ProblemDetailsProperties {
      * Base del "type" de cada problema, se le concatena el código del error.
      * Admite rutas relativas o URLs absolutas.
      */
-    private String baseTypeUrl = ProblemDetailsFactory.BASE_TYPE_POR_DEFECTO;
+    private String baseTypeUrl = ProblemDetailsFactory.DEFAULT_BASE_TYPE;
 
     private final Security security = new Security();
+
+    private final TraceId traceId = new TraceId();
 
     /**
      * @return la base del {@code type}
@@ -45,6 +49,36 @@ public class ProblemDetailsProperties {
      */
     public Security getSecurity() {
         return security;
+    }
+
+    /**
+     * @return la configuración del traceId
+     */
+    public TraceId getTraceId() {
+        return traceId;
+    }
+
+    /** Identificador de traza en las respuestas. */
+    public static class TraceId {
+
+        /**
+         * Incluye el traceId de la petición cuando hay trazas activas.
+         */
+        private boolean enabled = true;
+
+        /**
+         * @return si se incluye el traceId
+         */
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        /**
+         * @param enabled si se incluye el traceId
+         */
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     /** Integración con Spring Security. */

@@ -38,9 +38,9 @@ public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoin
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
-        writer.escribir(response, request,
+        writer.write(response, request,
                 ErrorCode.UNAUTHORIZED,
-                writer.getFabrica().detalle(ErrorCode.UNAUTHORIZED,
+                writer.getFactory().detail(ErrorCode.UNAUTHORIZED,
                         "Se requiere autenticación para acceder a este recurso"),
                 wwwAuthenticate != null ? HttpHeaders.WWW_AUTHENTICATE : null,
                 wwwAuthenticate);

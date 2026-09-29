@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -63,6 +65,18 @@ class ControladorDePrueba {
     @GetMapping("/pasarela")
     String pasarela() {
         throw new PasarelaNoDisponibleException();
+    }
+
+    // Subclase de DataIntegrityViolationException
+    @GetMapping("/duplicado")
+    String duplicado() {
+        throw new DuplicateKeyException(
+                "duplicate key value violates unique constraint \"usuarios_email_key\"");
+    }
+
+    @GetMapping("/concurrencia")
+    String concurrencia() {
+        throw new OptimisticLockingFailureException("Row was updated or deleted by another transaction");
     }
 
     @GetMapping("/licencia")

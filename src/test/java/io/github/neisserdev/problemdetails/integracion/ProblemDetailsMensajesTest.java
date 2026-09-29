@@ -63,6 +63,13 @@ class ProblemDetailsMensajesTest {
     }
 
     @Test
+    void traduceElDetalleDeLosConflictosDeDatos() throws Exception {
+        mvc.perform(get("/publico/duplicado").locale(Locale.ENGLISH))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("The operation conflicts with existing data"));
+    }
+
+    @Test
     void resuelveElReasonDeResponseStatusComoClave() throws Exception {
         mvc.perform(get("/publico/licencia").locale(Locale.ENGLISH))
                 .andExpect(status().is(402))

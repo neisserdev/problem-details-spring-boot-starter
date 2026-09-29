@@ -12,14 +12,14 @@ Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). We
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>0.2.0</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:0.2.0")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.0.0")
 ```
 
 El starter es ligero y no impone dependencias transitivas. Se adapta dinámicamente a las dependencias presentes en el classpath del proyecto (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
@@ -36,6 +36,7 @@ La autoconfiguración inicializa los siguientes componentes según el contexto:
 | `SecurityAuthenticationEntryPoint` (401) | Activo si Spring Security está presente y `problem-details.security.enabled` es `true`. |
 | `SecurityAccessDeniedHandler` (403) | Activo si Spring Security está presente y `problem-details.security.enabled` es `true`. |
 | Conexión con `http.exceptionHandling()` | Configuración automática inyectada en el `SecurityFilterChain`. |
+| `TraceIdProvider` | Activo si Micrometer Tracing está presente y `problem-details.trace-id.enabled` es `true`. |
 
 Estos beans retroceden (back-off) automáticamente si se declara un componente personalizado del mismo tipo. No es necesario habilitar explícitamente `spring.mvc.problemdetails.enabled`; el manejador del starter sustituye la implementación por defecto de Spring.
 
@@ -68,6 +69,8 @@ problem-details:
   security:
     enabled: true              # false: desactiva la inyección automática para 401 y 403
     www-authenticate: Bearer   # vacío: omite la cabecera en respuestas 401
+  trace-id:
+    enabled: true              # false: no incluye el traceId aunque haya trazas
 ```
 
 La propiedad `base-type-url` admite rutas relativas (permitidas por el RFC si incluyen la ruta completa) o URLs absolutas. Para entornos productivos, se recomienda una URL resoluble que apunte a la documentación de los códigos de error. El sistema de inicialización valida la correcta formación de la URI durante el arranque y añade una barra final si la base no termina en `/`, `:`, `#` o `=`, previniendo fallos silenciosos en producción.
@@ -147,6 +150,48 @@ public class StockInsuficienteException extends BusinessException {
 
 El identificador `code` debe ser apto para componer una URI (convención recomendada: `MAYUSCULAS_CON_GUIONES_BAJOS`). Las claves `code` y `timestamp` están reservadas por el estándar y se omitirán si se incluyen de forma duplicada en `getProperties()`.
 
+Las cabeceras HTTP de la respuesta se declaran sobrescribiendo `getHeaders()`, por ejemplo para indicar cuándo reintentar:
+
+```java
+@Override
+public Map<String, String> getHeaders() {
+    return Map.of("Retry-After", "120");
+}
+```
+
+## Identificador de Traza
+
+Con Micrometer Tracing en el proyecto (por ejemplo mediante `spring-boot-starter-opentelemetry` o `spring-boot-starter-zipkin`), cada respuesta de error incluye el `traceId` de la petición:
+
+```json
+{
+  "type": "/problems/INTERNAL_ERROR",
+  "status": 500,
+  "code": "INTERNAL_ERROR",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+}
+```
+
+El cliente puede reportar ese valor y la petición se localiza directamente en los logs y en el sistema de trazas. Sin Micrometer Tracing, o si la petición no tiene traza activa, el atributo no aparece. Se desactiva con `problem-details.trace-id.enabled=false`.
+
+Para otra fuente de trazas, por ejemplo el agente de OpenTelemetry, basta con declarar un bean propio:
+
+```java
+@Bean
+TraceIdProvider traceIdProvider() {
+    return () -> MDC.get("trace_id");
+}
+```
+
+## Conflictos de Datos
+
+Las excepciones de la capa de acceso a datos de Spring responden 409 `RESOURCE_CONFLICT`:
+
+- `DataIntegrityViolationException` y sus subclases, como `DuplicateKeyException`: violaciones de restricciones de la base de datos (clave única, clave foránea, etc.).
+- `OptimisticLockingFailureException` y sus subclases: conflictos de bloqueo optimista con `@Version`.
+
+El detalle es un texto genérico. El mensaje original de la base de datos no se expone al cliente, ya que revela nombres de tablas y restricciones. Estas excepciones se detectan sin requerir Spring Data en el classpath, y un `@ExceptionHandler` propio para ellas tiene prioridad sobre este comportamiento.
+
 ## Validación de Datos
 
 Las distintas vías de validación unifican su salida bajo una misma estructura para simplificar el consumo por parte de la aplicación cliente:
@@ -183,6 +228,8 @@ Los títulos y los detalles fijos se resuelven con el `MessageSource` de la apli
 | `problemDetails.title.<CODIGO>` | Título de cualquier `ProblemType`, incluidos los catálogos propios. |
 | `problemDetails.detail.<CODIGO>` | Detalle fijo de `INTERNAL_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `VALIDATION_ERROR`, `CONSTRAINT_VIOLATION`, `INVALID_CREDENTIALS`, `UNAUTHORIZED` y `ACCESS_DENIED`. |
 | `problemDetails.detail.TYPE_MISMATCH.parameter` | Detalle de `TYPE_MISMATCH` con el nombre (`{0}`) y el tipo (`{1}`) del parámetro. |
+| `problemDetails.detail.RESOURCE_CONFLICT.integrity` | Detalle de las violaciones de restricciones de la base de datos. |
+| `problemDetails.detail.RESOURCE_CONFLICT.concurrency` | Detalle de los conflictos de bloqueo optimista. |
 
 Ejemplo de `messages_en.properties`:
 
@@ -196,7 +243,7 @@ Los mensajes con argumentos siguen el formato de `MessageFormat`, por lo que las
 
 ## Registro de Errores
 
-Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Las excepciones no controladas se registran siempre en ERROR. Para ver los 4xx durante el desarrollo:
+Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Los conflictos de datos se registran en DEBUG y las excepciones no controladas siempre en ERROR. Para ver los 4xx durante el desarrollo:
 
 ```yaml
 logging:
@@ -258,7 +305,7 @@ class LimiteDePeticionesFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         if (superaElLimite(request)) {
-            writer.escribir(response, request, ErrorCode.TOO_MANY_REQUESTS,
+            writer.write(response, request, ErrorCode.TOO_MANY_REQUESTS,
                     "Has superado el límite de peticiones", "Retry-After", "30");
             return;
         }
@@ -281,10 +328,10 @@ class ManejadorDeErrores extends GlobalExceptionHandler {
         super(fabrica, propiedades.getSecurity().isEnabled());
     }
 
-    @ExceptionHandler(OptimisticLockingFailureException.class)
-    ProblemDetail edicionConcurrente(OptimisticLockingFailureException ex, HttpServletRequest request) {
-        return getFabrica().crear(ErrorCode.RESOURCE_CONFLICT,
-                "Otro usuario modificó el recurso mientras lo editabas", request.getRequestURI());
+    @ExceptionHandler(EntityNotFoundException.class)
+    ProblemDetail entidadNoEncontrada(EntityNotFoundException ex, HttpServletRequest request) {
+        return getFactory().create(ErrorCode.RESOURCE_NOT_FOUND,
+                "El recurso solicitado no existe", request.getRequestURI());
     }
 }
 ```

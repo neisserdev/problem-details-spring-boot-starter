@@ -3,6 +3,7 @@ package io.github.neisserdev.problemdetails.integracion;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -84,9 +85,37 @@ class ProblemDetailsIntegracionTest {
     void losErroresDeNegocio5xxSeRegistranComoError(CapturedOutput salida) throws Exception {
         mvc.perform(get("/publico/pasarela"))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("PASARELA_NO_DISPONIBLE"));
+                .andExpect(jsonPath("$.code").value("PASARELA_NO_DISPONIBLE"))
+                .andExpect(header().string("Retry-After", "120"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
 
         assertThat(salida).contains("ERROR").contains("Business exception [PASARELA_NO_DISPONIBLE]");
+    }
+
+    @Test
+    void lasExcepcionesSinCabecerasNoAnadenNinguna() throws Exception {
+        mvc.perform(post("/publico/pedidos"))
+                .andExpect(status().isConflict())
+                .andExpect(header().doesNotExist("Retry-After"));
+    }
+
+    @Test
+    void violacionDeRestriccionEnLaBaseDeDatos() throws Exception {
+        mvc.perform(get("/publico/duplicado"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value(BASE + "RESOURCE_CONFLICT"))
+                .andExpect(jsonPath("$.code").value("RESOURCE_CONFLICT"))
+                .andExpect(jsonPath("$.detail").isNotEmpty())
+                .andExpect(jsonPath("$.detail", not(containsString("usuarios_email_key"))));
+    }
+
+    @Test
+    void conflictoDeBloqueoOptimista() throws Exception {
+        mvc.perform(get("/publico/concurrencia"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RESOURCE_CONFLICT"))
+                .andExpect(jsonPath("$.detail", not(containsString("another transaction"))));
     }
 
     @Test
@@ -139,6 +168,21 @@ class ProblemDetailsIntegracionTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("TYPE_MISMATCH"))
                 .andExpect(jsonPath("$.detail", containsString("'n'")));
+    }
+
+    @Test
+    void tipoDeContenidoNoSoportado() throws Exception {
+        mvc.perform(post("/publico/usuarios").contentType(MediaType.TEXT_PLAIN).content("nombre"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+                .andExpect(jsonPath("$.type").value(BASE + "UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void sinTrazasNoHayTraceId() throws Exception {
+        mvc.perform(get("/publico/pedidos/7"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.traceId").doesNotExist());
     }
 
     @Test

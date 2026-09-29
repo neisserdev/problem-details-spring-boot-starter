@@ -45,6 +45,8 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -66,11 +68,14 @@ jobs:
           MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
+      # Notas con los commits desde el tag anterior
       - name: Crear release en GitHub
-        run: >-
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
-          --title "$GITHUB_REF_NAME"
-          target/problem-details-spring-boot-starter-"$VERSION"*.jar
+        run: |
+          anterior=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          if [ -n "$anterior" ]; then rango="$anterior..$GITHUB_REF_NAME"; else rango="$GITHUB_REF_NAME"; fi
+          git log --no-merges --pretty='- %s' "$rango" > notas.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notas.md \
+            target/problem-details-spring-boot-starter-"$VERSION"*.jar
         env:
           GH_TOKEN: ${{ github.token }}
 

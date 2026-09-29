@@ -31,9 +31,9 @@ public class SecurityAccessDeniedHandler implements AccessDeniedHandler {
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException accessDeniedException) throws IOException {
-        writer.escribir(response, request,
+        writer.write(response, request,
                 ErrorCode.ACCESS_DENIED,
-                writer.getFabrica().detalle(ErrorCode.ACCESS_DENIED,
+                writer.getFactory().detail(ErrorCode.ACCESS_DENIED,
                         "No tienes permisos suficientes para acceder a este recurso"));
     }
 }

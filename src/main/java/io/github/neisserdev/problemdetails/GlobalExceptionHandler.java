@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
 import jakarta.validation.Path;
@@ -34,6 +35,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -56,7 +59,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * aplicación se consultan antes.
  *
  * <p>Las excepciones de negocio y las de {@link ResponseStatus} se registran en
- * DEBUG si son 4xx y en ERROR si son 5xx.
+ * DEBUG si son 4xx y en ERROR si son 5xx. Los conflictos de datos, en DEBUG.
  */
 @Order(Ordered.LOWEST_PRECEDENCE)
 @RestControllerAdvice
@@ -70,30 +73,34 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             "org.springframework.security.access.AccessDeniedException";
     private static final String AUTHENTICATION =
             "org.springframework.security.core.AuthenticationException";
+    private static final String DATA_INTEGRITY_VIOLATION =
+            "org.springframework.dao.DataIntegrityViolationException";
+    private static final String OPTIMISTIC_LOCKING_FAILURE =
+            "org.springframework.dao.OptimisticLockingFailureException";
 
     private static final String PROP_ERRORS = "errors";
     private static final String PROP_COUNT = "count";
     private static final String PROP_FIELD = "field";
     private static final String PROP_DETAIL = "detail";
 
-    private final ProblemDetailsFactory fabrica;
-    private final boolean seguridadHabilitada;
+    private final ProblemDetailsFactory factory;
+    private final boolean securityEnabled;
 
     /**
-     * @param fabrica             factory de las respuestas
-     * @param seguridadHabilitada si es {@code true}, {@code BadCredentialsException}
-     *                            responde {@link ErrorCode#INVALID_CREDENTIALS}
+     * @param factory         factory de las respuestas
+     * @param securityEnabled si es {@code true}, {@code BadCredentialsException}
+     *                        responde {@link ErrorCode#INVALID_CREDENTIALS}
      */
-    public GlobalExceptionHandler(ProblemDetailsFactory fabrica, boolean seguridadHabilitada) {
-        this.fabrica = Objects.requireNonNull(fabrica, "fabrica");
-        this.seguridadHabilitada = seguridadHabilitada;
+    public GlobalExceptionHandler(ProblemDetailsFactory factory, boolean securityEnabled) {
+        this.factory = Objects.requireNonNull(factory, "factory");
+        this.securityEnabled = securityEnabled;
     }
 
     /**
      * @return la factory, para subclases
      */
-    protected final ProblemDetailsFactory getFabrica() {
-        return fabrica;
+    protected final ProblemDetailsFactory getFactory() {
+        return factory;
     }
 
     // Negocio
@@ -105,13 +112,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(BusinessException.class)
     public ProblemDetail handleBusiness(BusinessException ex, HttpServletRequest request) {
-        String codigo = ex.getProblemType().getCode();
+        String code = ex.getProblemType().getCode();
         if (ex.getProblemType().getHttpStatus().is5xxServerError()) {
-            log.error("Business exception [{}] on {}: {}", codigo, request.getRequestURI(), ex.getMessage(), ex);
+            log.error("Business exception [{}] on {}: {}", code, request.getRequestURI(), ex.getMessage(), ex);
         } else {
-            log.debug("Business exception [{}] on {}: {}", codigo, request.getRequestURI(), ex.getMessage());
+            log.debug("Business exception [{}] on {}: {}", code, request.getRequestURI(), ex.getMessage());
         }
-        return fabrica.crear(ex, request.getRequestURI());
+        applyHeaders(ex.getHeaders());
+        return factory.create(ex, request.getRequestURI());
     }
 
     /**
@@ -123,16 +131,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(ConstraintViolationException.class)
     public ProblemDetail handleConstraintViolation(ConstraintViolationException ex, HttpServletRequest request) {
-        List<Map<String, String>> errores = ex.getConstraintViolations().stream()
-                .map(v -> error(rutaLegible(v.getPropertyPath()), v.getMessage()))
+        List<Map<String, String>> errors = ex.getConstraintViolations().stream()
+                .map(v -> error(readablePath(v.getPropertyPath()), v.getMessage()))
                 .toList();
-        return problemaDeValidacion(ErrorCode.CONSTRAINT_VIOLATION, errores,
+        return validationProblem(ErrorCode.CONSTRAINT_VIOLATION, errors,
                 "Uno o más parámetros no cumplen las restricciones", request.getRequestURI());
     }
 
     /**
-     * Excepciones no controladas. Relanza las de Spring Security y respeta
-     * {@link ResponseStatus}, el resto responde 500.
+     * Excepciones no controladas. Relanza las de Spring Security, responde 409 a
+     * los conflictos de datos, respeta {@link ResponseStatus} y el resto responde 500.
      *
      * @param ex      la excepción no manejada
      * @param request la petición en curso
@@ -144,35 +152,49 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         String uri = request.getRequestURI();
 
         // BadCredentialsException del login llega al controlador
-        if (seguridadHabilitada && esInstanciaDe(ex, BAD_CREDENTIALS)) {
-            return fabrica.crear(ErrorCode.INVALID_CREDENTIALS,
-                    fabrica.detalle(ErrorCode.INVALID_CREDENTIALS, "El correo o la contraseña no son válidos"), uri);
+        if (securityEnabled && isInstanceOf(ex, BAD_CREDENTIALS)) {
+            return factory.create(ErrorCode.INVALID_CREDENTIALS,
+                    factory.detail(ErrorCode.INVALID_CREDENTIALS, "Las credenciales no son válidas"), uri);
         }
 
         // Spring Security decide entre 401 y 403
-        if (esInstanciaDe(ex, ACCESS_DENIED) || esInstanciaDe(ex, AUTHENTICATION)) {
+        if (isInstanceOf(ex, ACCESS_DENIED) || isInstanceOf(ex, AUTHENTICATION)) {
             throw ex;
         }
 
-        ResponseStatus anotada = AnnotatedElementUtils.findMergedAnnotation(ex.getClass(), ResponseStatus.class);
-        if (anotada != null) {
-            ProblemDetail pd = ProblemDetail.forStatus(anotada.code());
-            if (StringUtils.hasText(anotada.reason())) {
+        // El mensaje de la base de datos no se expone, revela tablas y restricciones
+        if (isInstanceOf(ex, DATA_INTEGRITY_VIOLATION)) {
+            log.debug("Data integrity violation on {}: {}", uri, ex.getMessage());
+            return factory.create(ErrorCode.RESOURCE_CONFLICT,
+                    factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_CONFLICT.integrity",
+                            "La operación entra en conflicto con datos existentes"), uri);
+        }
+        if (isInstanceOf(ex, OPTIMISTIC_LOCKING_FAILURE)) {
+            log.debug("Optimistic locking failure on {}: {}", uri, ex.getMessage());
+            return factory.create(ErrorCode.RESOURCE_CONFLICT,
+                    factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_CONFLICT.concurrency",
+                            "El recurso fue modificado por otra operación. Vuelve a cargarlo e inténtalo de nuevo"), uri);
+        }
+
+        ResponseStatus annotated = AnnotatedElementUtils.findMergedAnnotation(ex.getClass(), ResponseStatus.class);
+        if (annotated != null) {
+            ProblemDetail pd = ProblemDetail.forStatus(annotated.code());
+            if (StringUtils.hasText(annotated.reason())) {
                 // reason admite una clave de mensaje, igual que en Spring MVC
-                pd.setDetail(fabrica.mensaje(anotada.reason(), anotada.reason()));
+                pd.setDetail(factory.message(annotated.reason(), annotated.reason()));
             }
-            fabrica.completar(pd, anotada.code().value(), uri);
-            if (anotada.code().is5xxServerError()) {
-                log.error("Exception with @ResponseStatus({}) on {}", anotada.code().value(), uri, ex);
+            factory.complete(pd, annotated.code().value(), uri);
+            if (annotated.code().is5xxServerError()) {
+                log.error("Exception with @ResponseStatus({}) on {}", annotated.code().value(), uri, ex);
             } else {
-                log.debug("Exception with @ResponseStatus({}) on {}: {}", anotada.code().value(), uri, ex.toString());
+                log.debug("Exception with @ResponseStatus({}) on {}: {}", annotated.code().value(), uri, ex.toString());
             }
             return pd;
         }
 
         log.error("Unhandled exception [{}] on {}", ex.getMessage(), uri, ex);
-        return fabrica.crear(ErrorCode.INTERNAL_ERROR,
-                fabrica.detalle(ErrorCode.INTERNAL_ERROR, "Ha ocurrido un error interno"), uri);
+        return factory.create(ErrorCode.INTERNAL_ERROR,
+                factory.detail(ErrorCode.INTERNAL_ERROR, "Ha ocurrido un error interno"), uri);
     }
 
     // Excepciones de Spring MVC con mensaje propio
@@ -183,16 +205,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpStatusCode statusCode, WebRequest request) {
 
         // Errores por campo
-        List<Map<String, String>> errores = new ArrayList<>();
+        List<Map<String, String>> errors = new ArrayList<>();
         ex.getBindingResult().getFieldErrors().forEach(e ->
-                errores.add(error(e.getField(), mensajeDe(e, "Valor no válido"))));
+                errors.add(error(e.getField(), messageOf(e, "Valor no válido"))));
 
         // Reglas a nivel de clase
         ex.getBindingResult().getGlobalErrors().forEach(e ->
-                errores.add(error("", mensajeDe(e, "Datos no válidos"))));
+                errors.add(error("", messageOf(e, "Datos no válidos"))));
 
-        ProblemDetail pd = problemaDeValidacion(ErrorCode.VALIDATION_ERROR, errores,
-                "Los datos enviados no son válidos", uriDe(request));
+        ProblemDetail pd = validationProblem(ErrorCode.VALIDATION_ERROR, errors,
+                "Los datos enviados no son válidos", uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.VALIDATION_ERROR.getHttpStatus(), request);
     }
 
@@ -209,24 +231,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return super.handleHandlerMethodValidationException(ex, headers, statusCode, request);
         }
 
-        List<Map<String, String>> errores = new ArrayList<>();
-        for (ParameterValidationResult resultado : ex.getParameterValidationResults()) {
-            String parametro = nombreDe(resultado);
-            if (resultado instanceof ParameterErrors errors) {
-                errors.getFieldErrors().forEach(e ->
-                        errores.add(error(e.getField(), mensajeDe(e, "Valor no válido"))));
-                errors.getGlobalErrors().forEach(e ->
-                        errores.add(error(parametro, mensajeDe(e, "Datos no válidos"))));
+        List<Map<String, String>> errors = new ArrayList<>();
+        for (ParameterValidationResult result : ex.getParameterValidationResults()) {
+            String parameter = parameterName(result);
+            if (result instanceof ParameterErrors parameterErrors) {
+                parameterErrors.getFieldErrors().forEach(e ->
+                        errors.add(error(e.getField(), messageOf(e, "Valor no válido"))));
+                parameterErrors.getGlobalErrors().forEach(e ->
+                        errors.add(error(parameter, messageOf(e, "Datos no válidos"))));
             } else {
-                resultado.getResolvableErrors().forEach(e ->
-                        errores.add(error(parametro, mensajeDe(e, "Valor no válido"))));
+                result.getResolvableErrors().forEach(e ->
+                        errors.add(error(parameter, messageOf(e, "Valor no válido"))));
             }
         }
         ex.getCrossParameterValidationResults().forEach(e ->
-                errores.add(error("", mensajeDe(e, "Parámetros no válidos"))));
+                errors.add(error("", messageOf(e, "Parámetros no válidos"))));
 
-        ProblemDetail pd = problemaDeValidacion(ErrorCode.CONSTRAINT_VIOLATION, errores,
-                "Uno o más parámetros no cumplen las restricciones", uriDe(request));
+        ProblemDetail pd = validationProblem(ErrorCode.CONSTRAINT_VIOLATION, errors,
+                "Uno o más parámetros no cumplen las restricciones", uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.CONSTRAINT_VIOLATION.getHttpStatus(), request);
     }
 
@@ -235,10 +257,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpMessageNotReadableException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        ProblemDetail pd = fabrica.crear(
+        ProblemDetail pd = factory.create(
                 ErrorCode.MALFORMED_REQUEST,
-                fabrica.detalle(ErrorCode.MALFORMED_REQUEST, "El cuerpo de la petición no se puede leer o está mal formado"),
-                uriDe(request));
+                factory.detail(ErrorCode.MALFORMED_REQUEST, "El cuerpo de la petición no se puede leer o está mal formado"),
+                uriOf(request));
 
         return handleExceptionInternal(ex, pd, headers, ErrorCode.MALFORMED_REQUEST.getHttpStatus(), request);
     }
@@ -248,16 +270,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             TypeMismatchException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        String detalle;
+        String detail;
         if (ex instanceof MethodArgumentTypeMismatchException mate && mate.getRequiredType() != null) {
-            detalle = fabrica.mensaje(ProblemDetailsFactory.PREFIJO_DETALLE + "TYPE_MISMATCH.parameter",
+            detail = factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "TYPE_MISMATCH.parameter",
                     "El parámetro ''{0}'' debe ser de tipo {1}",
                     mate.getName(), mate.getRequiredType().getSimpleName());
         } else {
-            detalle = fabrica.detalle(ErrorCode.TYPE_MISMATCH, "El valor proporcionado no tiene el tipo esperado");
+            detail = factory.detail(ErrorCode.TYPE_MISMATCH, "El valor proporcionado no tiene el tipo esperado");
         }
 
-        ProblemDetail pd = fabrica.crear(ErrorCode.TYPE_MISMATCH, detalle, uriDe(request));
+        ProblemDetail pd = factory.create(ErrorCode.TYPE_MISMATCH, detail, uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.TYPE_MISMATCH.getHttpStatus(), request);
     }
 
@@ -272,75 +294,75 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             Exception ex, Object body, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        ResponseEntity<Object> respuesta = super.handleExceptionInternal(ex, body, headers, statusCode, request);
-        if (respuesta == null) {
+        ResponseEntity<Object> responseEntity = super.handleExceptionInternal(ex, body, headers, statusCode, request);
+        if (responseEntity == null) {
             return null;
         }
-        if (respuesta.getBody() instanceof ProblemDetail pd) {
-            fabrica.completar(pd, respuesta.getStatusCode().value(), uriDe(request));
+        if (responseEntity.getBody() instanceof ProblemDetail pd) {
+            factory.complete(pd, responseEntity.getStatusCode().value(), uriOf(request));
         }
-        return respuesta;
+        return responseEntity;
     }
 
     // Utilidades
 
     // Forma común de los errores de validación, el detail lista los mensajes
-    private ProblemDetail problemaDeValidacion(ErrorCode codigo, List<Map<String, String>> errores,
-                                               String detalleGenerico, String uri) {
-        String resumen = errores.stream()
+    private ProblemDetail validationProblem(ErrorCode code, List<Map<String, String>> errors,
+                                            String genericDetail, String uri) {
+        String summary = errors.stream()
                 .map(e -> e.get(PROP_DETAIL))
                 .distinct()
                 .collect(Collectors.joining(", "));
 
         Map<String, Object> extra = new LinkedHashMap<>();
-        extra.put(PROP_ERRORS, errores);
-        extra.put(PROP_COUNT, errores.size());
-        String detalle = resumen.isBlank() ? fabrica.detalle(codigo, detalleGenerico) : resumen;
-        return fabrica.crear(codigo, detalle, uri, extra);
+        extra.put(PROP_ERRORS, errors);
+        extra.put(PROP_COUNT, errors.size());
+        String detail = summary.isBlank() ? factory.detail(code, genericDetail) : summary;
+        return factory.create(code, detail, uri, extra);
     }
 
-    private static Map<String, String> error(String campo, String mensaje) {
+    private static Map<String, String> error(String field, String message) {
         Map<String, String> error = new LinkedHashMap<>();
-        error.put(PROP_FIELD, campo);
-        error.put(PROP_DETAIL, mensaje);
+        error.put(PROP_FIELD, field);
+        error.put(PROP_DETAIL, message);
         return error;
     }
 
-    private static String mensajeDe(MessageSourceResolvable error, String porDefecto) {
-        String mensaje = error.getDefaultMessage();
-        return mensaje != null ? mensaje : porDefecto;
+    private static String messageOf(MessageSourceResolvable error, String defaultText) {
+        String message = error.getDefaultMessage();
+        return message != null ? message : defaultText;
     }
 
     // Nombre de @RequestParam o @PathVariable, si no el del parámetro Java
-    private static String nombreDe(ParameterValidationResult resultado) {
-        MethodParameter parametro = resultado.getMethodParameter();
-        String nombre = null;
+    private static String parameterName(ParameterValidationResult result) {
+        MethodParameter parameter = result.getMethodParameter();
+        String name = null;
 
-        RequestParam requestParam = parametro.getParameterAnnotation(RequestParam.class);
+        RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
         if (requestParam != null) {
-            nombre = primeroConTexto(requestParam.name(), requestParam.value());
+            name = firstWithText(requestParam.name(), requestParam.value());
         }
-        PathVariable pathVariable = parametro.getParameterAnnotation(PathVariable.class);
-        if (nombre == null && pathVariable != null) {
-            nombre = primeroConTexto(pathVariable.name(), pathVariable.value());
+        PathVariable pathVariable = parameter.getParameterAnnotation(PathVariable.class);
+        if (name == null && pathVariable != null) {
+            name = firstWithText(pathVariable.name(), pathVariable.value());
         }
-        if (nombre == null) {
-            nombre = parametro.getParameterName();
+        if (name == null) {
+            name = parameter.getParameterName();
         }
-        if (nombre == null) {
-            nombre = "arg" + parametro.getParameterIndex();
+        if (name == null) {
+            name = "arg" + parameter.getParameterIndex();
         }
 
-        if (resultado.getContainerIndex() != null) {
-            return nombre + "[" + resultado.getContainerIndex() + "]";
+        if (result.getContainerIndex() != null) {
+            return name + "[" + result.getContainerIndex() + "]";
         }
-        if (resultado.getContainerKey() != null) {
-            return nombre + "[" + resultado.getContainerKey() + "]";
+        if (result.getContainerKey() != null) {
+            return name + "[" + result.getContainerKey() + "]";
         }
-        return nombre;
+        return name;
     }
 
-    private static String primeroConTexto(String a, String b) {
+    private static String firstWithText(String a, String b) {
         if (StringUtils.hasText(a)) {
             return a;
         }
@@ -348,38 +370,55 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // Ruta de la violación sin el nombre del método: "page" en lugar de "listar.page"
-    private static String rutaLegible(Path ruta) {
+    private static String readablePath(Path path) {
         StringBuilder sb = new StringBuilder();
-        for (Path.Node nodo : ruta) {
-            ElementKind tipo = nodo.getKind();
-            if (tipo == ElementKind.METHOD || tipo == ElementKind.CONSTRUCTOR) {
+        for (Path.Node node : path) {
+            ElementKind kind = node.getKind();
+            if (kind == ElementKind.METHOD || kind == ElementKind.CONSTRUCTOR) {
                 continue;
             }
-            if (nodo.isInIterable()) {
-                Object posicion = nodo.getIndex() != null ? nodo.getIndex() : nodo.getKey();
-                sb.append('[').append(posicion != null ? posicion : "").append(']');
+            if (node.isInIterable()) {
+                Object position = node.getIndex() != null ? node.getIndex() : node.getKey();
+                sb.append('[').append(position != null ? position : "").append(']');
             }
-            String nombre = nodo.getName();
-            if (nombre != null && !nombre.isEmpty() && !nombre.startsWith("<")) {
+            String name = node.getName();
+            if (name != null && !name.isEmpty() && !name.startsWith("<")) {
                 if (!sb.isEmpty()) {
                     sb.append('.');
                 }
-                sb.append(nombre);
+                sb.append(name);
             }
         }
         return sb.toString();
     }
 
-    private static boolean esInstanciaDe(Throwable ex, String nombreDeClase) {
-        for (Class<?> tipo = ex.getClass(); tipo != null; tipo = tipo.getSuperclass()) {
-            if (tipo.getName().equals(nombreDeClase)) {
+    // DispatcherServlet expone la respuesta en curso
+    private static void applyHeaders(Map<String, String> headers) {
+        if (headers == null || headers.isEmpty()) {
+            return;
+        }
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            HttpServletResponse response = attributes.getResponse();
+            if (response != null) {
+                headers.forEach((name, value) -> {
+                    if (name != null && value != null) {
+                        response.setHeader(name, value);
+                    }
+                });
+            }
+        }
+    }
+
+    private static boolean isInstanceOf(Throwable ex, String className) {
+        for (Class<?> type = ex.getClass(); type != null; type = type.getSuperclass()) {
+            if (type.getName().equals(className)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static String uriDe(WebRequest request) {
+    private static String uriOf(WebRequest request) {
         if (request instanceof ServletWebRequest servletRequest) {
             return servletRequest.getRequest().getRequestURI();
         }

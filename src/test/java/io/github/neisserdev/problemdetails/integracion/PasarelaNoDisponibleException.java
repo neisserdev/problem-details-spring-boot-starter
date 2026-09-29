@@ -1,5 +1,7 @@
 package io.github.neisserdev.problemdetails.integracion;
 
+import java.util.Map;
+
 import io.github.neisserdev.problemdetails.BusinessException;
 
 class PasarelaNoDisponibleException extends BusinessException {
@@ -8,5 +10,10 @@ class PasarelaNoDisponibleException extends BusinessException {
 
     PasarelaNoDisponibleException() {
         super(ErroresDeTienda.PASARELA_NO_DISPONIBLE, "La pasarela de pago no responde");
+    }
+
+    @Override
+    public Map<String, String> getHeaders() {
+        return Map.of("Retry-After", "120");
     }
 }

@@ -15,6 +15,7 @@ import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * Construye los {@link ProblemDetail} de la API con los campos {@code type},
@@ -27,11 +28,14 @@ import org.springframework.util.ObjectUtils;
  *
  * <p>Con un {@link MessageSource}, títulos y detalles se resuelven en el idioma
  * de la petición. Sin traducción se usa el texto por defecto.
+ *
+ * <p>Con un {@link TraceIdProvider}, cada problema incluye el {@code traceId}
+ * de la petición si existe.
  */
 public class ProblemDetailsFactory {
 
     /** Base del {@code type} cuando no se configura otra. */
-    public static final String BASE_TYPE_POR_DEFECTO = "/problems/";
+    public static final String DEFAULT_BASE_TYPE = "/problems/";
 
     /** Instante en que se produjo el error. */
     public static final String PROP_TIMESTAMP = "timestamp";
@@ -39,20 +43,24 @@ public class ProblemDetailsFactory {
     /** Código estable del error. */
     public static final String PROP_CODE = "code";
 
+    /** Identificador de la traza de la petición, si hay trazas. */
+    public static final String PROP_TRACE_ID = "traceId";
+
     /** Prefijo de las claves de título: {@code problemDetails.title.CODIGO}. */
-    public static final String PREFIJO_TITULO = "problemDetails.title.";
+    public static final String TITLE_KEY_PREFIX = "problemDetails.title.";
 
     /** Prefijo de las claves de detalle: {@code problemDetails.detail.CODIGO}. */
-    public static final String PREFIJO_DETALLE = "problemDetails.detail.";
+    public static final String DETAIL_KEY_PREFIX = "problemDetails.detail.";
 
-    private static final Set<String> RESERVADAS = Set.of(PROP_TIMESTAMP, PROP_CODE);
+    private static final Set<String> RESERVED_PROPERTIES = Set.of(PROP_TIMESTAMP, PROP_CODE);
 
     private final String baseType;
-    private final MessageSource mensajes;
+    private final MessageSource messageSource;
+    private final TraceIdProvider traceIdProvider;
 
-    /** Crea la factory con la base por defecto ({@value #BASE_TYPE_POR_DEFECTO}). */
+    /** Crea la factory con la base por defecto ({@value #DEFAULT_BASE_TYPE}). */
     public ProblemDetailsFactory() {
-        this(BASE_TYPE_POR_DEFECTO);
+        this(DEFAULT_BASE_TYPE);
     }
 
     /**
@@ -64,16 +72,26 @@ public class ProblemDetailsFactory {
     }
 
     /**
-     * @param baseTypeUrl base a la que se concatena el código para formar el {@code type}
-     * @param mensajes    fuente de mensajes para traducir títulos y detalles, o {@code null}
+     * @param baseTypeUrl   base a la que se concatena el código para formar el {@code type}
+     * @param messageSource fuente de mensajes para traducir títulos y detalles, o {@code null}
      * @throws IllegalArgumentException si la base está vacía o no forma un URI válido
      */
-    public ProblemDetailsFactory(String baseTypeUrl, MessageSource mensajes) {
+    public ProblemDetailsFactory(String baseTypeUrl, MessageSource messageSource) {
+        this(baseTypeUrl, messageSource, null);
+    }
+
+    /**
+     * @param baseTypeUrl     base a la que se concatena el código para formar el {@code type}
+     * @param messageSource   fuente de mensajes para traducir títulos y detalles, o {@code null}
+     * @param traceIdProvider proveedor del {@code traceId}, o {@code null}
+     * @throws IllegalArgumentException si la base está vacía o no forma un URI válido
+     */
+    public ProblemDetailsFactory(String baseTypeUrl, MessageSource messageSource, TraceIdProvider traceIdProvider) {
         if (baseTypeUrl == null || baseTypeUrl.isBlank()) {
             throw new IllegalArgumentException("problem-details.base-type-url no puede estar vacío");
         }
         String base = baseTypeUrl.strip();
-        if (!terminaEnSeparador(base)) {
+        if (!endsWithSeparator(base)) {
             base = base + "/";
         }
         try {
@@ -83,7 +101,8 @@ public class ProblemDetailsFactory {
                     "problem-details.base-type-url no forma un URI válido: '" + baseTypeUrl + "'", e);
         }
         this.baseType = base;
-        this.mensajes = mensajes;
+        this.messageSource = messageSource;
+        this.traceIdProvider = traceIdProvider;
     }
 
     /**
@@ -96,25 +115,25 @@ public class ProblemDetailsFactory {
     /**
      * URI del {@code type} para un tipo de problema dado.
      *
-     * @param tipo tipo de problema
+     * @param type tipo de problema
      * @return la base más el código
      */
-    public URI tipoDe(ProblemType tipo) {
-        return tipoDe(tipo.getCode());
+    public URI typeOf(ProblemType type) {
+        return typeOf(type.getCode());
     }
 
     /**
      * URI del {@code type} para un código dado.
      *
-     * @param codigo código del problema
+     * @param code código del problema
      * @return la base más el código
      * @throws IllegalStateException si el código contiene caracteres no válidos en un URI
      */
-    public URI tipoDe(String codigo) {
+    public URI typeOf(String code) {
         try {
-            return URI.create(baseType + codigo);
+            return URI.create(baseType + code);
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("El código de error '" + codigo
+            throw new IllegalStateException("El código de error '" + code
                     + "' no es válido dentro de un URI; usa MAYUSCULAS_CON_GUIONES_BAJOS", e);
         }
     }
@@ -126,40 +145,43 @@ public class ProblemDetailsFactory {
      * @param requestUri ruta de la petición, para el {@code instance}
      * @return el problema listo para devolver
      */
-    public ProblemDetail crear(BusinessException ex, String requestUri) {
-        return crear(ex.getProblemType(), ex.getMessage(), requestUri, ex.getProperties());
+    public ProblemDetail create(BusinessException ex, String requestUri) {
+        return create(ex.getProblemType(), ex.getMessage(), requestUri, ex.getProperties());
     }
 
     /**
-     * @param tipo       tipo de problema
-     * @param detalle    explicación específica de esta ocurrencia
+     * @param type       tipo de problema
+     * @param detail     explicación específica de esta ocurrencia
      * @param requestUri ruta de la petición, para el {@code instance}
      * @return el problema listo para devolver
      */
-    public ProblemDetail crear(ProblemType tipo, String detalle, String requestUri) {
-        return crear(tipo, detalle, requestUri, Map.of());
+    public ProblemDetail create(ProblemType type, String detail, String requestUri) {
+        return create(type, detail, requestUri, Map.of());
     }
 
     /**
-     * @param tipo       tipo de problema
-     * @param detalle    explicación específica de esta ocurrencia
+     * @param type       tipo de problema
+     * @param detail     explicación específica de esta ocurrencia
      * @param requestUri ruta de la petición, para el {@code instance}
      * @param extra      miembros de extensión, se ignoran {@code code} y {@code timestamp}
      * @return el problema listo para devolver
      */
-    public ProblemDetail crear(ProblemType tipo, String detalle, String requestUri, Map<String, ?> extra) {
-        Objects.requireNonNull(tipo, "tipo");
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(tipo.getHttpStatus(), detalle);
-        pd.setType(tipoDe(tipo));
-        pd.setTitle(titulo(tipo));
-        pd.setInstance(instanciaDe(requestUri));
+    public ProblemDetail create(ProblemType type, String detail, String requestUri, Map<String, ?> extra) {
+        Objects.requireNonNull(type, "type");
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(type.getHttpStatus(), detail);
+        pd.setType(typeOf(type));
+        pd.setTitle(title(type));
+        pd.setInstance(toInstance(requestUri));
         pd.setProperty(PROP_TIMESTAMP, Instant.now().toString());
-        pd.setProperty(PROP_CODE, tipo.getCode());
-        extra.forEach((clave, valor) -> {
-            if (!RESERVADAS.contains(clave)) {
-                pd.setProperty(clave, valor);
-            }
-        });
+        pd.setProperty(PROP_CODE, type.getCode());
+        if (extra != null) {
+            extra.forEach((key, value) -> {
+                if (!RESERVED_PROPERTIES.contains(key)) {
+                    pd.setProperty(key, value);
+                }
+            });
+        }
+        addTraceId(pd);
         return pd;
     }
 
@@ -175,22 +197,22 @@ public class ProblemDetailsFactory {
      * @param status     status HTTP de la respuesta, para derivar el código
      * @param requestUri ruta de la petición, para el {@code instance}
      */
-    public void completar(ProblemDetail pd, int status, String requestUri) {
+    public void complete(ProblemDetail pd, int status, String requestUri) {
         Map<String, Object> props = pd.getProperties();
 
         if (props == null || !props.containsKey(PROP_CODE)) {
-            Optional<ErrorCode> canonico = ErrorCode.porStatus(status);
-            if (canonico.isPresent()) {
-                ErrorCode error = canonico.get();
+            Optional<ErrorCode> canonical = ErrorCode.forStatus(status);
+            if (canonical.isPresent()) {
+                ErrorCode error = canonical.get();
                 pd.setProperty(PROP_CODE, error.getCode());
-                pd.setType(tipoDe(error));
-                pd.setTitle(titulo(error));
+                pd.setType(typeOf(error));
+                pd.setTitle(title(error));
             } else {
-                String codigo = codigoGenericoDe(status);
-                pd.setProperty(PROP_CODE, codigo);
-                pd.setType(tipoDe(codigo));
+                String code = genericCodeOf(status);
+                pd.setProperty(PROP_CODE, code);
+                pd.setType(typeOf(code));
                 if (pd.getTitle() != null) {
-                    pd.setTitle(mensaje(PREFIJO_TITULO + codigo, pd.getTitle()));
+                    pd.setTitle(message(TITLE_KEY_PREFIX + code, pd.getTitle()));
                 }
             }
         }
@@ -198,30 +220,50 @@ public class ProblemDetailsFactory {
             pd.setProperty(PROP_TIMESTAMP, Instant.now().toString());
         }
         if (pd.getInstance() == null) {
-            pd.setInstance(instanciaDe(requestUri));
+            pd.setInstance(toInstance(requestUri));
+        }
+        Map<String, Object> existing = pd.getProperties();
+        if (existing == null || !existing.containsKey(PROP_TRACE_ID)) {
+            addTraceId(pd);
+        }
+    }
+
+    // Un fallo al obtener la traza no debe impedir responder el error
+    private void addTraceId(ProblemDetail pd) {
+        if (traceIdProvider == null) {
+            return;
+        }
+        String traceId;
+        try {
+            traceId = traceIdProvider.currentTraceId();
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (StringUtils.hasText(traceId)) {
+            pd.setProperty(PROP_TRACE_ID, traceId);
         }
     }
 
     /**
      * Título del tipo de problema, traducido con {@code problemDetails.title.CODIGO}.
      *
-     * @param tipo tipo de problema
+     * @param type tipo de problema
      * @return el título traducido o el de {@link ProblemType#getTitle()}
      */
-    public String titulo(ProblemType tipo) {
-        return mensaje(PREFIJO_TITULO + tipo.getCode(), tipo.getTitle());
+    public String title(ProblemType type) {
+        return message(TITLE_KEY_PREFIX + type.getCode(), type.getTitle());
     }
 
     /**
      * Detalle fijo de un tipo de problema, traducido con {@code problemDetails.detail.CODIGO}.
      *
-     * @param tipo       tipo de problema
-     * @param porDefecto texto si no hay traducción
-     * @param argumentos argumentos para los marcadores {@code {0}}, {@code {1}}...
+     * @param type        tipo de problema
+     * @param defaultText texto si no hay traducción
+     * @param args        argumentos para los marcadores {@code {0}}, {@code {1}}...
      * @return el detalle traducido o el texto por defecto
      */
-    public String detalle(ProblemType tipo, String porDefecto, Object... argumentos) {
-        return mensaje(PREFIJO_DETALLE + tipo.getCode(), porDefecto, argumentos);
+    public String detail(ProblemType type, String defaultText, Object... args) {
+        return message(DETAIL_KEY_PREFIX + type.getCode(), defaultText, args);
     }
 
     /**
@@ -230,46 +272,46 @@ public class ProblemDetailsFactory {
      * <p>Con argumentos, el texto sigue el formato de {@link MessageFormat}:
      * las comillas simples literales se escriben dobles ({@code ''}).
      *
-     * @param clave      clave del mensaje
-     * @param porDefecto texto si la clave no existe
-     * @param argumentos argumentos para los marcadores {@code {0}}, {@code {1}}...
+     * @param key         clave del mensaje
+     * @param defaultText texto si la clave no existe
+     * @param args        argumentos para los marcadores {@code {0}}, {@code {1}}...
      * @return el mensaje resuelto
      */
-    public String mensaje(String clave, String porDefecto, Object... argumentos) {
+    public String message(String key, String defaultText, Object... args) {
         Locale locale = LocaleContextHolder.getLocale();
-        if (mensajes != null) {
-            return mensajes.getMessage(clave, argumentos, porDefecto, locale);
+        if (messageSource != null) {
+            return messageSource.getMessage(key, args, defaultText, locale);
         }
-        if (porDefecto == null || ObjectUtils.isEmpty(argumentos)) {
-            return porDefecto;
+        if (defaultText == null || ObjectUtils.isEmpty(args)) {
+            return defaultText;
         }
         try {
-            return new MessageFormat(porDefecto, locale).format(argumentos);
+            return new MessageFormat(defaultText, locale).format(args);
         } catch (IllegalArgumentException e) {
-            return porDefecto;
+            return defaultText;
         }
     }
 
     // Nombre de la constante de HttpStatus o HTTP_<n> si no existe
-    static String codigoGenericoDe(int status) {
-        String codigo = CODIGOS_HTTP_VIGENTES.get(status);
-        return codigo != null ? codigo : "HTTP_" + status;
+    static String genericCodeOf(int status) {
+        String code = HTTP_CODES.get(status);
+        return code != null ? code : "HTTP_" + status;
     }
 
     // Solo constantes vigentes, Spring 7 deprecó PAYLOAD_TOO_LARGE, UNPROCESSABLE_ENTITY, etc.
-    private static final Map<Integer, String> CODIGOS_HTTP_VIGENTES = codigosHttpVigentes();
+    private static final Map<Integer, String> HTTP_CODES = currentHttpCodes();
 
-    private static Map<Integer, String> codigosHttpVigentes() {
-        Map<Integer, String> codigos = new HashMap<>();
+    private static Map<Integer, String> currentHttpCodes() {
+        Map<Integer, String> codes = new HashMap<>();
         for (HttpStatus status : HttpStatus.values()) {
-            if (!estaDeprecado(status)) {
-                codigos.putIfAbsent(status.value(), status.name());
+            if (!isDeprecated(status)) {
+                codes.putIfAbsent(status.value(), status.name());
             }
         }
-        return Map.copyOf(codigos);
+        return Map.copyOf(codes);
     }
 
-    private static boolean estaDeprecado(HttpStatus status) {
+    private static boolean isDeprecated(HttpStatus status) {
         try {
             return HttpStatus.class.getField(status.name()).isAnnotationPresent(Deprecated.class);
         } catch (NoSuchFieldException e) {
@@ -278,7 +320,7 @@ public class ProblemDetailsFactory {
     }
 
     // instance es opcional, si la ruta no es un URI válido se omite
-    private static URI instanciaDe(String requestUri) {
+    private static URI toInstance(String requestUri) {
         if (requestUri == null || requestUri.isEmpty()) {
             return null;
         }
@@ -289,7 +331,7 @@ public class ProblemDetailsFactory {
         }
     }
 
-    private static boolean terminaEnSeparador(String base) {
+    private static boolean endsWithSeparator(String base) {
         return base.endsWith("/") || base.endsWith(":") || base.endsWith("#") || base.endsWith("=");
     }
 }

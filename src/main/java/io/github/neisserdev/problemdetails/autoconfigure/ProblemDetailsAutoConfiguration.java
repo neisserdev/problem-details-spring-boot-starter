@@ -1,5 +1,6 @@
 package io.github.neisserdev.problemdetails.autoconfigure;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -12,6 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 
 import io.github.neisserdev.problemdetails.GlobalExceptionHandler;
 import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
+import io.github.neisserdev.problemdetails.TraceIdProvider;
 
 /**
  * Autoconfiguración para aplicaciones Spring MVC.
@@ -30,8 +32,9 @@ import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
 @ConditionalOnClass(ResponseEntityExceptionHandler.class)
 @EnableConfigurationProperties(ProblemDetailsProperties.class)
 @Import({
-        ProblemDetailsConfigurations.EscrituraJson.class,
-        ProblemDetailsConfigurations.FiltrosDeSeguridad.class
+        ProblemDetailsConfigurations.JsonWriting.class,
+        ProblemDetailsConfigurations.SecurityFilters.class,
+        ProblemDetailsConfigurations.Tracing.class
 })
 public final class ProblemDetailsAutoConfiguration {
 
@@ -41,14 +44,16 @@ public final class ProblemDetailsAutoConfiguration {
     // El contexto delega en el MessageSource de la aplicación
     @Bean
     @ConditionalOnMissingBean
-    ProblemDetailsFactory problemDetailsFactory(ProblemDetailsProperties propiedades, ApplicationContext contexto) {
-        return new ProblemDetailsFactory(propiedades.getBaseTypeUrl(), contexto);
+    ProblemDetailsFactory problemDetailsFactory(ProblemDetailsProperties properties, ApplicationContext context,
+                                                ObjectProvider<TraceIdProvider> traceIdProviders) {
+        TraceIdProvider provider = properties.getTraceId().isEnabled() ? traceIdProviders.getIfAvailable() : null;
+        return new ProblemDetailsFactory(properties.getBaseTypeUrl(), context, provider);
     }
 
     @Bean
     @ConditionalOnMissingBean(ResponseEntityExceptionHandler.class)
-    GlobalExceptionHandler problemDetailsExceptionHandler(ProblemDetailsFactory fabrica,
-                                                          ProblemDetailsProperties propiedades) {
-        return new GlobalExceptionHandler(fabrica, propiedades.getSecurity().isEnabled());
+    GlobalExceptionHandler problemDetailsExceptionHandler(ProblemDetailsFactory factory,
+                                                          ProblemDetailsProperties properties) {
+        return new GlobalExceptionHandler(factory, properties.getSecurity().isEnabled());
     }
 }

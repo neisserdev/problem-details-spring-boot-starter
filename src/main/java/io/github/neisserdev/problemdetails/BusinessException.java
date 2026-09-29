@@ -8,7 +8,7 @@ import java.util.Objects;
  * y el manejador global la convierte en {@code ProblemDetail}.
  *
  * <p>Las propiedades de {@link #getProperties()} se añaden como miembros de
- * extensión del JSON.
+ * extensión del JSON y las de {@link #getHeaders()} como cabeceras HTTP.
  */
 public abstract class BusinessException extends RuntimeException {
 
@@ -47,4 +47,11 @@ public abstract class BusinessException extends RuntimeException {
      * @return propiedades adicionales, vacío por defecto
      */
     public Map<String, Object> getProperties() { return Map.of(); }
+
+    /**
+     * Cabeceras HTTP de la respuesta, por ejemplo {@code Retry-After} en un 429 o 503.
+     *
+     * @return cabeceras adicionales, vacío por defecto
+     */
+    public Map<String, String> getHeaders() { return Map.of(); }
 }

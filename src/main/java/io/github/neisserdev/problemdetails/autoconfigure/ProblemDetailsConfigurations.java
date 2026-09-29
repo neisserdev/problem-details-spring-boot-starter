@@ -1,5 +1,9 @@
 package io.github.neisserdev.problemdetails.autoconfigure;
 
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -14,14 +18,15 @@ import org.springframework.security.config.annotation.web.configurers.ExceptionH
 
 import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
 import io.github.neisserdev.problemdetails.ProblemJsonWriter;
+import io.github.neisserdev.problemdetails.TraceIdProvider;
 import io.github.neisserdev.problemdetails.security.SecurityAccessDeniedHandler;
 import io.github.neisserdev.problemdetails.security.SecurityAuthenticationEntryPoint;
 
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Configuraciones que dependen de Jackson 3 y Spring Security, separadas para
- * que no se carguen si esas librerías no están en el classpath.
+ * Configuraciones que dependen de Jackson 3, Spring Security y Micrometer Tracing,
+ * separadas para que no se carguen si esas librerías no están en el classpath.
  *
  * <p>El orden de {@code @Import} en {@link ProblemDetailsAutoConfiguration} es
  * importante, la de seguridad necesita el {@link ProblemJsonWriter}.
@@ -34,13 +39,13 @@ final class ProblemDetailsConfigurations {
     // Independiente de problem-details.security.enabled, lo usan también filtros propios
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(JsonMapper.class)
-    static class EscrituraJson {
+    static class JsonWriting {
 
         @Bean
         @ConditionalOnMissingBean
         @ConditionalOnBean(JsonMapper.class)
-        ProblemJsonWriter problemJsonWriter(JsonMapper jsonMapper, ProblemDetailsFactory fabrica) {
-            return new ProblemJsonWriter(jsonMapper, fabrica);
+        ProblemJsonWriter problemJsonWriter(JsonMapper jsonMapper, ProblemDetailsFactory factory) {
+            return new ProblemJsonWriter(jsonMapper, factory);
         }
     }
 
@@ -52,13 +57,13 @@ final class ProblemDetailsConfigurations {
     })
     @ConditionalOnBooleanProperty(name = "problem-details.security.enabled", matchIfMissing = true)
     @ConditionalOnBean(ProblemJsonWriter.class)
-    static class FiltrosDeSeguridad {
+    static class SecurityFilters {
 
         @Bean
         @ConditionalOnMissingBean
         SecurityAuthenticationEntryPoint problemDetailsAuthenticationEntryPoint(
-                ProblemJsonWriter writer, ProblemDetailsProperties propiedades) {
-            return new SecurityAuthenticationEntryPoint(writer, propiedades.getSecurity().getWwwAuthenticate());
+                ProblemJsonWriter writer, ProblemDetailsProperties properties) {
+            return new SecurityAuthenticationEntryPoint(writer, properties.getSecurity().getWwwAuthenticate());
         }
 
         @Bean
@@ -71,16 +76,33 @@ final class ProblemDetailsConfigurations {
         // Va primero para que un exceptionHandling(...) de la aplicación lo sobrescriba.
         @Configuration(proxyBeanMethods = false)
         @ConditionalOnClass(name = "org.springframework.security.config.annotation.web.builders.HttpSecurity")
-        static class CableadoAutomatico {
+        static class AutoWiring {
 
             @Bean
             @Order(Ordered.HIGHEST_PRECEDENCE)
             Customizer<ExceptionHandlingConfigurer<HttpSecurity>> problemDetailsExceptionHandlingCustomizer(
                     SecurityAuthenticationEntryPoint entryPoint, SecurityAccessDeniedHandler accessDeniedHandler) {
-                return excepciones -> excepciones
+                return exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler);
             }
+        }
+    }
+
+    // El Tracer se resuelve en cada petición, puede no existir aunque la clase esté presente
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "io.micrometer.tracing.Tracer")
+    @ConditionalOnBooleanProperty(name = "problem-details.trace-id.enabled", matchIfMissing = true)
+    static class Tracing {
+
+        @Bean
+        @ConditionalOnMissingBean
+        TraceIdProvider problemDetailsTraceIdProvider(ObjectProvider<Tracer> tracer) {
+            return () -> {
+                Tracer current = tracer.getIfAvailable();
+                Span span = current != null ? current.currentSpan() : null;
+                return span != null ? span.context().traceId() : null;
+            };
         }
     }
 }
