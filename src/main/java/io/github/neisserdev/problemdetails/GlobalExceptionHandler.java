@@ -29,6 +29,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,22 +45,23 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
- * Manejador global de excepciones. Convierte los errores de negocio, de Spring
- * MVC y de validación en respuestas {@code application/problem+json}.
+ * Global exception handler. Turns business, Spring MVC and validation errors
+ * into {@code application/problem+json} responses.
  *
- * <p>Todas las respuestas de {@link ResponseEntityExceptionHandler} pasan por
- * {@link #handleExceptionInternal}, donde se completan con {@code code},
- * {@code timestamp} e {@code instance}.
+ * <p>Every response of {@link ResponseEntityExceptionHandler} goes through
+ * {@link #handleExceptionInternal}, where it is completed with {@code code},
+ * {@code timestamp} and {@code instance}, and the Spring MVC detail is
+ * translated to the configured language.
  *
- * <p>No importa clases de Spring Security para funcionar sin ella en el
- * classpath. Sus excepciones se reconocen por nombre y se relanzan a
+ * <p>It does not import Spring Security classes, so it works without it on the
+ * classpath. Its exceptions are recognized by name and rethrown to
  * {@code ExceptionTranslationFilter}.
  *
- * <p>Tiene la precedencia más baja, los {@code @RestControllerAdvice} de la
- * aplicación se consultan antes.
+ * <p>It has the lowest precedence, the {@code @RestControllerAdvice} components
+ * of the application are consulted first.
  *
- * <p>Las excepciones de negocio y las de {@link ResponseStatus} se registran en
- * DEBUG si son 4xx y en ERROR si son 5xx. Los conflictos de datos, en DEBUG.
+ * <p>Business exceptions and {@link ResponseStatus} exceptions are logged at
+ * DEBUG when they are 4xx and at ERROR when they are 5xx. Data conflicts, at DEBUG.
  */
 @Order(Ordered.LOWEST_PRECEDENCE)
 @RestControllerAdvice
@@ -87,9 +89,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private final boolean securityEnabled;
 
     /**
-     * @param factory         factory de las respuestas
-     * @param securityEnabled si es {@code true}, {@code BadCredentialsException}
-     *                        responde {@link ErrorCode#INVALID_CREDENTIALS}
+     * @param factory         factory of the responses
+     * @param securityEnabled when {@code true}, {@code BadCredentialsException}
+     *                        responds {@link ErrorCode#INVALID_CREDENTIALS}
      */
     public GlobalExceptionHandler(ProblemDetailsFactory factory, boolean securityEnabled) {
         this.factory = Objects.requireNonNull(factory, "factory");
@@ -97,18 +99,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * @return la factory, para subclases
+     * @return the factory, for subclasses
      */
     protected final ProblemDetailsFactory getFactory() {
         return factory;
     }
 
-    // Negocio
+    // Business
 
     /**
-     * @param ex      la excepción de negocio
-     * @param request la petición en curso
-     * @return el problema con el tipo de la excepción
+     * @param ex      the business exception
+     * @param request the current request
+     * @return the problem with the type of the exception
      */
     @ExceptionHandler(BusinessException.class)
     public ProblemDetail handleBusiness(BusinessException ex, HttpServletRequest request) {
@@ -123,11 +125,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Restricciones en controladores con {@code @Validated} o en entidades al persistir.
+     * Constraints in {@code @Validated} beans or in entities when they are persisted.
      *
-     * @param ex      la violación
-     * @param request la petición en curso
-     * @return problema {@link ErrorCode#CONSTRAINT_VIOLATION} con la lista de errores
+     * @param ex      the violation
+     * @param request the current request
+     * @return {@link ErrorCode#CONSTRAINT_VIOLATION} problem with the list of errors
      */
     @ExceptionHandler(ConstraintViolationException.class)
     public ProblemDetail handleConstraintViolation(ConstraintViolationException ex, HttpServletRequest request) {
@@ -135,52 +137,52 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .map(v -> error(readablePath(v.getPropertyPath()), v.getMessage()))
                 .toList();
         return validationProblem(ErrorCode.CONSTRAINT_VIOLATION, errors,
-                "Uno o más parámetros no cumplen las restricciones", request.getRequestURI());
+                "One or more parameters do not meet the constraints", request.getRequestURI());
     }
 
     /**
-     * Excepciones no controladas. Relanza las de Spring Security, responde 409 a
-     * los conflictos de datos, respeta {@link ResponseStatus} y el resto responde 500.
+     * Unhandled exceptions. Rethrows the Spring Security ones, responds 409 to
+     * data conflicts, honors {@link ResponseStatus} and responds 500 to the rest.
      *
-     * @param ex      la excepción no manejada
-     * @param request la petición en curso
-     * @return el problema correspondiente
-     * @throws Exception la propia {@code ex} si es de Spring Security
+     * @param ex      the unhandled exception
+     * @param request the current request
+     * @return the matching problem
+     * @throws Exception the given {@code ex} itself when it comes from Spring Security
      */
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneric(Exception ex, HttpServletRequest request) throws Exception {
         String uri = request.getRequestURI();
 
-        // BadCredentialsException del login llega al controlador
+        // BadCredentialsException of a login reaches the controller
         if (securityEnabled && isInstanceOf(ex, BAD_CREDENTIALS)) {
             return factory.create(ErrorCode.INVALID_CREDENTIALS,
-                    factory.detail(ErrorCode.INVALID_CREDENTIALS, "Las credenciales no son válidas"), uri);
+                    factory.detail(ErrorCode.INVALID_CREDENTIALS, "The credentials are not valid"), uri);
         }
 
-        // Spring Security decide entre 401 y 403
+        // Spring Security decides between 401 and 403
         if (isInstanceOf(ex, ACCESS_DENIED) || isInstanceOf(ex, AUTHENTICATION)) {
             throw ex;
         }
 
-        // El mensaje de la base de datos no se expone, revela tablas y restricciones
+        // The database message is not exposed, it reveals tables and constraints
         if (isInstanceOf(ex, DATA_INTEGRITY_VIOLATION)) {
             log.debug("Data integrity violation on {}: {}", uri, ex.getMessage());
             return factory.create(ErrorCode.RESOURCE_CONFLICT,
                     factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_CONFLICT.integrity",
-                            "La operación entra en conflicto con datos existentes"), uri);
+                            "The operation conflicts with existing data"), uri);
         }
         if (isInstanceOf(ex, OPTIMISTIC_LOCKING_FAILURE)) {
             log.debug("Optimistic locking failure on {}: {}", uri, ex.getMessage());
             return factory.create(ErrorCode.RESOURCE_CONFLICT,
                     factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_CONFLICT.concurrency",
-                            "El recurso fue modificado por otra operación. Vuelve a cargarlo e inténtalo de nuevo"), uri);
+                            "The resource was modified by another operation. Reload it and try again"), uri);
         }
 
         ResponseStatus annotated = AnnotatedElementUtils.findMergedAnnotation(ex.getClass(), ResponseStatus.class);
         if (annotated != null) {
             ProblemDetail pd = ProblemDetail.forStatus(annotated.code());
             if (StringUtils.hasText(annotated.reason())) {
-                // reason admite una clave de mensaje, igual que en Spring MVC
+                // reason accepts a message key, as in Spring MVC
                 pd.setDetail(factory.message(annotated.reason(), annotated.reason()));
             }
             factory.complete(pd, annotated.code().value(), uri);
@@ -194,39 +196,39 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         log.error("Unhandled exception [{}] on {}", ex.getMessage(), uri, ex);
         return factory.create(ErrorCode.INTERNAL_ERROR,
-                factory.detail(ErrorCode.INTERNAL_ERROR, "Ha ocurrido un error interno"), uri);
+                factory.detail(ErrorCode.INTERNAL_ERROR, "An internal error occurred"), uri);
     }
 
-    // Excepciones de Spring MVC con mensaje propio
+    // Spring MVC exceptions with their own detail
 
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        // Errores por campo
+        // Field errors
         List<Map<String, String>> errors = new ArrayList<>();
         ex.getBindingResult().getFieldErrors().forEach(e ->
-                errors.add(error(e.getField(), messageOf(e, "Valor no válido"))));
+                errors.add(error(e.getField(), messageOf(e, "Invalid value"))));
 
-        // Reglas a nivel de clase
+        // Class-level rules
         ex.getBindingResult().getGlobalErrors().forEach(e ->
-                errors.add(error("", messageOf(e, "Datos no válidos"))));
+                errors.add(error("", messageOf(e, "Invalid data"))));
 
         ProblemDetail pd = validationProblem(ErrorCode.VALIDATION_ERROR, errors,
-                "Los datos enviados no son válidos", uriOf(request));
+                "The submitted data is not valid", uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.VALIDATION_ERROR.getHttpStatus(), request);
     }
 
     /**
-     * Validación integrada de Spring MVC en parámetros sin {@code @Validated}.
+     * Built-in Spring MVC validation of parameters without {@code @Validated}.
      */
     @Override
     protected ResponseEntity<Object> handleHandlerMethodValidationException(
             HandlerMethodValidationException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        // Valor de retorno inválido, error del servidor
+        // Invalid return value, a server error
         if (ex.isForReturnValue()) {
             return super.handleHandlerMethodValidationException(ex, headers, statusCode, request);
         }
@@ -236,19 +238,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             String parameter = parameterName(result);
             if (result instanceof ParameterErrors parameterErrors) {
                 parameterErrors.getFieldErrors().forEach(e ->
-                        errors.add(error(e.getField(), messageOf(e, "Valor no válido"))));
+                        errors.add(error(e.getField(), messageOf(e, "Invalid value"))));
                 parameterErrors.getGlobalErrors().forEach(e ->
-                        errors.add(error(parameter, messageOf(e, "Datos no válidos"))));
+                        errors.add(error(parameter, messageOf(e, "Invalid data"))));
             } else {
                 result.getResolvableErrors().forEach(e ->
-                        errors.add(error(parameter, messageOf(e, "Valor no válido"))));
+                        errors.add(error(parameter, messageOf(e, "Invalid value"))));
             }
         }
         ex.getCrossParameterValidationResults().forEach(e ->
-                errors.add(error("", messageOf(e, "Parámetros no válidos"))));
+                errors.add(error("", messageOf(e, "Invalid parameters"))));
 
         ProblemDetail pd = validationProblem(ErrorCode.CONSTRAINT_VIOLATION, errors,
-                "Uno o más parámetros no cumplen las restricciones", uriOf(request));
+                "One or more parameters do not meet the constraints", uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.CONSTRAINT_VIOLATION.getHttpStatus(), request);
     }
 
@@ -259,7 +261,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         ProblemDetail pd = factory.create(
                 ErrorCode.MALFORMED_REQUEST,
-                factory.detail(ErrorCode.MALFORMED_REQUEST, "El cuerpo de la petición no se puede leer o está mal formado"),
+                factory.detail(ErrorCode.MALFORMED_REQUEST, "The request body is malformed or cannot be read"),
                 uriOf(request));
 
         return handleExceptionInternal(ex, pd, headers, ErrorCode.MALFORMED_REQUEST.getHttpStatus(), request);
@@ -273,21 +275,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         String detail;
         if (ex instanceof MethodArgumentTypeMismatchException mate && mate.getRequiredType() != null) {
             detail = factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "TYPE_MISMATCH.parameter",
-                    "El parámetro ''{0}'' debe ser de tipo {1}",
+                    "Parameter ''{0}'' must be of type {1}",
                     mate.getName(), mate.getRequiredType().getSimpleName());
         } else {
-            detail = factory.detail(ErrorCode.TYPE_MISMATCH, "El valor proporcionado no tiene el tipo esperado");
+            detail = factory.detail(ErrorCode.TYPE_MISMATCH, "The provided value does not have the expected type");
         }
 
         ProblemDetail pd = factory.create(ErrorCode.TYPE_MISMATCH, detail, uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.TYPE_MISMATCH.getHttpStatus(), request);
     }
 
-    // Salida común de ResponseEntityExceptionHandler
+    // Common exit of ResponseEntityExceptionHandler
 
     /**
-     * Completa el ProblemDetail de cualquier respuesta con los campos que falten.
-     * Devuelve {@code null} si la respuesta ya fue enviada.
+     * Completes the ProblemDetail of every response with the missing fields.
+     * Returns {@code null} when the response was already sent.
      */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
@@ -299,14 +301,36 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return null;
         }
         if (responseEntity.getBody() instanceof ProblemDetail pd) {
+            // Only problems built by Spring MVC, the ones of this handler already have a code
+            Map<String, Object> props = pd.getProperties();
+            if (props == null || !props.containsKey(ProblemDetailsFactory.PROP_CODE)) {
+                translateFrameworkDetail(ex, pd);
+            }
             factory.complete(pd, responseEntity.getStatusCode().value(), uriOf(request));
         }
         return responseEntity;
     }
 
-    // Utilidades
+    // Utilities
 
-    // Forma común de los errores de validación, el detail lista los mensajes
+    // Spring MVC detail in the configured language, unless the application translates it
+    private void translateFrameworkDetail(Exception ex, ProblemDetail pd) {
+        String code;
+        Object[] args;
+        if (ex instanceof ErrorResponse errorResponse) {
+            code = errorResponse.getDetailMessageCode();
+            args = errorResponse.getDetailMessageArguments();
+        } else {
+            code = ErrorResponse.getDefaultDetailMessageCode(ex.getClass(), null);
+            args = null;
+        }
+        String detail = factory.resolve(code, args);
+        if (detail != null) {
+            pd.setDetail(detail);
+        }
+    }
+
+    // Common shape of validation errors, the detail lists the messages
     private ProblemDetail validationProblem(ErrorCode code, List<Map<String, String>> errors,
                                             String genericDetail, String uri) {
         String summary = errors.stream()
@@ -333,7 +357,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return message != null ? message : defaultText;
     }
 
-    // Nombre de @RequestParam o @PathVariable, si no el del parámetro Java
+    // Name of @RequestParam or @PathVariable, otherwise the Java parameter name
     private static String parameterName(ParameterValidationResult result) {
         MethodParameter parameter = result.getMethodParameter();
         String name = null;
@@ -369,7 +393,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return StringUtils.hasText(b) ? b : null;
     }
 
-    // Ruta de la violación sin el nombre del método: "page" en lugar de "listar.page"
+    // Path of the violation without the method name: "page" instead of "list.page"
     private static String readablePath(Path path) {
         StringBuilder sb = new StringBuilder();
         for (Path.Node node : path) {
@@ -392,7 +416,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return sb.toString();
     }
 
-    // DispatcherServlet expone la respuesta en curso
+    // DispatcherServlet exposes the current response
     private static void applyHeaders(Map<String, String> headers) {
         if (headers == null || headers.isEmpty()) {
             return;

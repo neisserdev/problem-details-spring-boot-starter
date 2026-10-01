@@ -1,10 +1,12 @@
 # problem-details-spring-boot-starter
 
-Implementación estándar de manejo de errores basados en RFC 9457 (Problem Details) para Spring Boot 4 y Spring MVC. Al integrar esta dependencia, toda la API unifica sus respuestas de error bajo el formato `application/problem+json`, abarcando la capa de dominio, el enrutamiento de Spring MVC, las validaciones y Spring Security.
+[🇪🇸 Español](README.es.md) | [🇬🇧 English](README.md)
 
-Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). WebFlux no está soportado.
+Standard RFC 9457 (Problem Details) error handling for Spring Boot 4 and Spring MVC. Once the dependency is added, every error response of the API shares the `application/problem+json` format, covering the domain layer, Spring MVC routing, validation and Spring Security.
 
-## Instalación
+Requirements: Java 17 or later, Spring Boot 4 and a servlet environment (Spring MVC). WebFlux is not supported.
+
+## Installation
 
 ### Maven
 
@@ -12,85 +14,90 @@ Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). We
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.0.0")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.0")
 ```
 
-El starter es ligero y no impone dependencias transitivas. Se adapta dinámicamente a las dependencias presentes en el classpath del proyecto (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
+The starter is lightweight and brings no transitive dependencies. It adapts to the dependencies already on the project classpath (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
 
-## Registro Automático de Componentes
+## Auto-configured Components
 
-La autoconfiguración inicializa los siguientes componentes según el contexto:
+The auto-configuration registers the following components depending on the context:
 
-| Bean | Condición de registro |
-|------|-----------------------|
-| `ProblemDetailsFactory` | Siempre activo en aplicaciones servlet. |
-| `GlobalExceptionHandler` | Activo si no existe otro `ResponseEntityExceptionHandler` en el contexto. |
-| `ProblemJsonWriter` | Activo si existe un `JsonMapper` de Jackson 3 (provisto por defecto en Spring Boot). |
-| `SecurityAuthenticationEntryPoint` (401) | Activo si Spring Security está presente y `problem-details.security.enabled` es `true`. |
-| `SecurityAccessDeniedHandler` (403) | Activo si Spring Security está presente y `problem-details.security.enabled` es `true`. |
-| Conexión con `http.exceptionHandling()` | Configuración automática inyectada en el `SecurityFilterChain`. |
-| `TraceIdProvider` | Activo si Micrometer Tracing está presente y `problem-details.trace-id.enabled` es `true`. |
+| Bean | Registration condition |
+|------|------------------------|
+| `ProblemDetailsFactory` | Always active in servlet applications. |
+| `GlobalExceptionHandler` | Active when there is no other `ResponseEntityExceptionHandler` in the context. |
+| `ProblemJsonWriter` | Active when a Jackson 3 `JsonMapper` exists (provided by default by Spring Boot). |
+| `SecurityAuthenticationEntryPoint` (401) | Active when Spring Security is present and `problem-details.security.enabled` is `true`. |
+| `SecurityAccessDeniedHandler` (403) | Active when Spring Security is present and `problem-details.security.enabled` is `true`. |
+| Wiring into `http.exceptionHandling()` | Applied automatically to every `SecurityFilterChain`. |
+| `TraceIdProvider` | Active when Micrometer Tracing is present and `problem-details.trace-id.enabled` is `true`. |
 
-Estos beans retroceden (back-off) automáticamente si se declara un componente personalizado del mismo tipo. No es necesario habilitar explícitamente `spring.mvc.problemdetails.enabled`; el manejador del starter sustituye la implementación por defecto de Spring.
+These beans back off automatically when a custom component of the same type is declared. There is no need to enable `spring.mvc.problemdetails.enabled`; the starter handler replaces the default Spring implementation.
 
-## Formato de la Respuesta
+## Response Format
 
 ```json
 {
-  "type": "https://api.ejemplo.com/problemas/RESOURCE_NOT_FOUND",
-  "title": "Recurso no encontrado",
+  "type": "https://api.example.com/problems/RESOURCE_NOT_FOUND",
+  "title": "Resource not found",
   "status": 404,
-  "detail": "Pedido con id 7 no encontrado",
-  "instance": "/pedidos/7",
+  "detail": "Order with id 7 not found",
+  "instance": "/orders/7",
   "timestamp": "2026-09-27T18:42:10.512Z",
   "code": "RESOURCE_NOT_FOUND",
-  "resource": "Pedido",
+  "resource": "Order",
   "resourceId": "7"
 }
 ```
 
-- `type`: URI base configurada concatenada con el código de error.
-- `code`: Identificador estable presente en toda respuesta, incluyendo los errores generados por el framework (404, 405, 415, 401). Permite a los clientes de la API implementar lógicas condicionales (`switch`) sin depender exclusivamente del status HTTP.
-- `timestamp` e `instance`: Atributos garantizados en cada respuesta.
-- Los miembros de extensión (`resource`, `resourceId`) se serializan en el nivel raíz del JSON, en estricto cumplimiento del RFC.
+- `type`: configured base URI followed by the error code.
+- `code`: stable identifier present in every response, including errors generated by the framework (404, 405, 415, 401). It lets API clients branch on the error (`switch`) without relying only on the HTTP status.
+- `timestamp` and `instance`: always present.
+- Extension members (`resource`, `resourceId`) are serialized at the root of the JSON, as the RFC requires.
 
-## Configuración
+Default texts are in English. Set `problem-details.language: es` for Spanish, or translate them as described in [Internationalization](#internationalization).
+
+## Configuration
 
 ```yaml
 problem-details:
-  base-type-url: https://api.ejemplo.com/problemas/   # Valor por defecto: /problems/
+  base-type-url: https://api.example.com/problems/   # Default: /problems/
+  language: en                 # en (default) | es
   security:
-    enabled: true              # false: desactiva la inyección automática para 401 y 403
-    www-authenticate: Bearer   # vacío: omite la cabecera en respuestas 401
+    enabled: true              # false: disables the automatic 401 and 403 wiring
+    www-authenticate: Bearer   # empty: omits the header in 401 responses
   trace-id:
-    enabled: true              # false: no incluye el traceId aunque haya trazas
+    enabled: true              # false: never includes the traceId
 ```
 
-La propiedad `base-type-url` admite rutas relativas (permitidas por el RFC si incluyen la ruta completa) o URLs absolutas. Para entornos productivos, se recomienda una URL resoluble que apunte a la documentación de los códigos de error. El sistema de inicialización valida la correcta formación de la URI durante el arranque y añade una barra final si la base no termina en `/`, `:`, `#` o `=`, previniendo fallos silenciosos en producción.
+`base-type-url` accepts relative paths (allowed by the RFC when they include the full path) or absolute URLs. In production, a resolvable URL pointing to the documentation of the error codes is recommended. The URI is validated on startup, so a malformed value fails fast instead of in production, and a trailing slash is appended when the base does not end with `/`, `:`, `#` or `=`.
 
-Nota: `security.enabled=false` desactiva únicamente la integración automática con Spring Security. `ProblemJsonWriter` permanece disponible para su uso en filtros personalizados.
+`language` sets the language of the titles and details provided by the starter. Application translations take precedence, as described in [Internationalization](#internationalization).
 
-## Excepciones Base
+`security.enabled=false` only disables the automatic Spring Security integration. `ProblemJsonWriter` remains available for custom filters.
 
-El starter incluye excepciones predefinidas para los flujos de negocio más comunes:
+## Base Exceptions
+
+The starter includes exceptions for the most common business flows:
 
 ```java
-throw new ResourceNotFoundException("Pedido", id);                   // 404
-throw new ResourceConflictException("El email ya está registrado");  // 409
-throw new BusinessRuleViolationException("El pedido ya se envió");   // 422
+throw new ResourceNotFoundException("Order", id);                          // 404
+throw new ResourceConflictException("The email is already registered");    // 409
+throw new BusinessRuleViolationException("The order was already shipped"); // 422
 ```
 
-Catálogo predefinido en `ErrorCode`:
+Built-in catalog in `ErrorCode`:
 
-| Código | Status HTTP |
-|--------|-------------|
+| Code | HTTP status |
+|------|-------------|
 | `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `CONSTRAINT_VIOLATION` | 400 |
 | `UNAUTHORIZED`, `INVALID_CREDENTIALS` | 401 |
 | `ACCESS_DENIED` | 403 |
@@ -105,52 +112,52 @@ Catálogo predefinido en `ErrorCode`:
 | `INTERNAL_ERROR` | 500 |
 | `SERVICE_UNAVAILABLE` | 503 |
 
-La nomenclatura se alinea con el estándar RFC 9110 y Spring Framework 7. Si el framework emite un estado HTTP no contemplado explícitamente en la tabla, el código de negocio se deriva semánticamente del status.
+Names follow RFC 9110 and Spring Framework 7. When the framework returns an HTTP status that is not listed in the table, the code is derived from the status itself (for example `GONE` for 410).
 
-## Extensibilidad de Dominio
+## Custom Error Types
 
-El diseño permite extender el manejo de errores definiendo catálogos de negocio propios. Se requiere implementar la interfaz `ProblemType` y crear una excepción que extienda de `BusinessException`:
+Your own error catalogs are declared by implementing `ProblemType` and extending `BusinessException`:
 
 ```java
-public enum ErroresDeTienda implements ProblemType {
+public enum StoreErrors implements ProblemType {
 
-    STOCK_INSUFICIENTE("Stock insuficiente", HttpStatus.CONFLICT),
-    CUPON_CADUCADO("Cupón caducado", HttpStatus.UNPROCESSABLE_CONTENT);
+    INSUFFICIENT_STOCK("Insufficient stock", HttpStatus.CONFLICT),
+    COUPON_EXPIRED("Coupon expired", HttpStatus.UNPROCESSABLE_CONTENT);
 
-    private final String titulo;
+    private final String title;
     private final HttpStatus status;
 
-    ErroresDeTienda(String titulo, HttpStatus status) {
-        this.titulo = titulo;
+    StoreErrors(String title, HttpStatus status) {
+        this.title = title;
         this.status = status;
     }
 
     @Override public String getCode() { return name(); }
-    @Override public String getTitle() { return titulo; }
+    @Override public String getTitle() { return title; }
     @Override public HttpStatusCode getHttpStatus() { return status; }
 }
 ```
 
 ```java
-public class StockInsuficienteException extends BusinessException {
+public class InsufficientStockException extends BusinessException {
 
-    private final int disponible;
+    private final int available;
 
-    public StockInsuficienteException(int disponible) {
-        super(ErroresDeTienda.STOCK_INSUFICIENTE, "Solo quedan %d unidades".formatted(disponible));
-        this.disponible = disponible;
+    public InsufficientStockException(int available) {
+        super(StoreErrors.INSUFFICIENT_STOCK, "Only %d units left".formatted(available));
+        this.available = available;
     }
 
     @Override
     public Map<String, Object> getProperties() {
-        return Map.of("disponible", disponible);   // Se inyecta en la raíz del JSON
+        return Map.of("available", available);   // Added at the root of the JSON
     }
 }
 ```
 
-El identificador `code` debe ser apto para componer una URI (convención recomendada: `MAYUSCULAS_CON_GUIONES_BAJOS`). Las claves `code` y `timestamp` están reservadas por el estándar y se omitirán si se incluyen de forma duplicada en `getProperties()`.
+The `code` must be valid inside a URI (recommended convention: `UPPER_CASE_WITH_UNDERSCORES`). The `code` and `timestamp` keys are reserved and are ignored if they appear in `getProperties()`.
 
-Las cabeceras HTTP de la respuesta se declaran sobrescribiendo `getHeaders()`, por ejemplo para indicar cuándo reintentar:
+HTTP response headers are declared by overriding `getHeaders()`, for example to tell the client when to retry:
 
 ```java
 @Override
@@ -159,9 +166,23 @@ public Map<String, String> getHeaders() {
 }
 ```
 
-## Identificador de Traza
+The `detail` is the exception message. To translate it, return a message key and its arguments; when the key has no translation, the message is used:
 
-Con Micrometer Tracing en el proyecto (por ejemplo mediante `spring-boot-starter-opentelemetry` o `spring-boot-starter-zipkin`), cada respuesta de error incluye el `traceId` de la petición:
+```java
+@Override
+public String getDetailMessageCode() {
+    return "store.insufficientStock";   // Only {0} units left
+}
+
+@Override
+public Object[] getDetailMessageArguments() {
+    return new Object[] {available};
+}
+```
+
+## Trace ID
+
+With Micrometer Tracing in the project (for example through `spring-boot-starter-opentelemetry` or `spring-boot-starter-zipkin`), every error response includes the `traceId` of the request:
 
 ```json
 {
@@ -172,9 +193,9 @@ Con Micrometer Tracing en el proyecto (por ejemplo mediante `spring-boot-starter
 }
 ```
 
-El cliente puede reportar ese valor y la petición se localiza directamente en los logs y en el sistema de trazas. Sin Micrometer Tracing, o si la petición no tiene traza activa, el atributo no aparece. Se desactiva con `problem-details.trace-id.enabled=false`.
+A client can report that value and the request can be found right away in the logs and in the tracing system. Without Micrometer Tracing, or when the request has no active trace, the member is omitted. It is disabled with `problem-details.trace-id.enabled=false`.
 
-Para otra fuente de trazas, por ejemplo el agente de OpenTelemetry, basta con declarar un bean propio:
+For another trace source, such as the OpenTelemetry Java agent, declare your own bean:
 
 ```java
 @Bean
@@ -183,67 +204,73 @@ TraceIdProvider traceIdProvider() {
 }
 ```
 
-## Conflictos de Datos
+## Data Conflicts
 
-Las excepciones de la capa de acceso a datos de Spring responden 409 `RESOURCE_CONFLICT`:
+Exceptions from the Spring data access layer return 409 `RESOURCE_CONFLICT`:
 
-- `DataIntegrityViolationException` y sus subclases, como `DuplicateKeyException`: violaciones de restricciones de la base de datos (clave única, clave foránea, etc.).
-- `OptimisticLockingFailureException` y sus subclases: conflictos de bloqueo optimista con `@Version`.
+- `DataIntegrityViolationException` and its subclasses, such as `DuplicateKeyException`: database constraint violations (unique key, foreign key, etc.).
+- `OptimisticLockingFailureException` and its subclasses: optimistic locking conflicts with `@Version`.
 
-El detalle es un texto genérico. El mensaje original de la base de datos no se expone al cliente, ya que revela nombres de tablas y restricciones. Estas excepciones se detectan sin requerir Spring Data en el classpath, y un `@ExceptionHandler` propio para ellas tiene prioridad sobre este comportamiento.
+The detail is a generic text. The original database message is never exposed to the client, since it reveals table and constraint names. These exceptions are detected without requiring Spring Data on the classpath, and your own `@ExceptionHandler` for them takes precedence.
 
-## Validación de Datos
+## Validation
 
-Las distintas vías de validación unifican su salida bajo una misma estructura para simplificar el consumo por parte de la aplicación cliente:
+All validation paths share the same structure, so clients handle them in a single way:
 
-- `@Valid @RequestBody` genera `VALIDATION_ERROR`.
-- Restricciones en `@RequestParam` o `@PathVariable` generan `CONSTRAINT_VIOLATION`.
-- Violaciones a nivel de clase (`@Validated` / `ConstraintViolationException`) generan `CONSTRAINT_VIOLATION`.
+- `@Valid @RequestBody` produces `VALIDATION_ERROR`.
+- Constraints on `@RequestParam` or `@PathVariable` produce `CONSTRAINT_VIOLATION`.
+- Constraints on methods of `@Validated` beans (`ConstraintViolationException`) produce `CONSTRAINT_VIOLATION`.
 
 ```json
 {
   "type": "/problems/VALIDATION_ERROR",
-  "title": "Error de validación",
+  "title": "Validation error",
   "status": 400,
-  "detail": "no debe estar vacío, debe ser una dirección de correo electrónico con formato correcto",
-  "instance": "/usuarios",
+  "detail": "must not be blank, must be a well-formed email address",
+  "instance": "/users",
   "timestamp": "2026-09-27T18:42:10.512Z",
   "code": "VALIDATION_ERROR",
   "errors": [
-    { "field": "nombre", "detail": "no debe estar vacío" },
-    { "field": "email", "detail": "debe ser una dirección de correo electrónico con formato correcto" }
+    { "field": "name", "detail": "must not be blank" },
+    { "field": "email", "detail": "must be a well-formed email address" }
   ],
   "count": 2
 }
 ```
 
-En los parámetros de entrada, el atributo `field` refleja el nombre expuesto en la API (`@RequestParam("n")` se serializa como `"n"`). Los errores de validación a nivel de clase que involucran múltiples propiedades exponen el atributo `field` vacío.
+For request parameters, `field` is the name exposed by the API (`@RequestParam("n")` is serialized as `"n"`). Class-level validation errors involving several properties have an empty `field`. Validation messages come from Bean Validation and follow the request language.
 
-## Internacionalización
+## Internationalization
 
-Los títulos y los detalles fijos se resuelven con el `MessageSource` de la aplicación según el idioma de la petición (`Accept-Language`). Si una clave no está definida se usa el texto en español incluido en el starter.
+Titles and details are resolved in this order:
 
-| Clave | Uso |
-|-------|-----|
-| `problemDetails.title.<CODIGO>` | Título de cualquier `ProblemType`, incluidos los catálogos propios. |
-| `problemDetails.detail.<CODIGO>` | Detalle fijo de `INTERNAL_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `VALIDATION_ERROR`, `CONSTRAINT_VIOLATION`, `INVALID_CREDENTIALS`, `UNAUTHORIZED` y `ACCESS_DENIED`. |
-| `problemDetails.detail.TYPE_MISMATCH.parameter` | Detalle de `TYPE_MISMATCH` con el nombre (`{0}`) y el tipo (`{1}`) del parámetro. |
-| `problemDetails.detail.RESOURCE_CONFLICT.integrity` | Detalle de las violaciones de restricciones de la base de datos. |
-| `problemDetails.detail.RESOURCE_CONFLICT.concurrency` | Detalle de los conflictos de bloqueo optimista. |
+1. The application `MessageSource`, in the language of the request (`Accept-Language`).
+2. The texts bundled with the starter, in the language of `problem-details.language` (`en` by default, `es` also available).
 
-Ejemplo de `messages_en.properties`:
+With `es`, the details generated by Spring MVC (405, 415, missing parameters, etc.) are translated too, unless the application defines the Spring keys (`problemDetail.<exception class>`). The `io/github/neisserdev/problemdetails/messages.properties` and `messages_es.properties` files of the jar contain every key and work as a template for other languages.
+
+| Key | Usage |
+|-----|-------|
+| `problemDetails.title.<CODE>` | Title of any `ProblemType`, including custom catalogs. |
+| `problemDetails.detail.<CODE>` | Fixed detail of `INTERNAL_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `VALIDATION_ERROR`, `CONSTRAINT_VIOLATION`, `INVALID_CREDENTIALS`, `UNAUTHORIZED` and `ACCESS_DENIED`. |
+| `problemDetails.detail.TYPE_MISMATCH.parameter` | Detail of `TYPE_MISMATCH` with the name (`{0}`) and type (`{1}`) of the parameter. |
+| `problemDetails.detail.RESOURCE_CONFLICT.integrity` | Detail of database constraint violations. |
+| `problemDetails.detail.RESOURCE_CONFLICT.concurrency` | Detail of optimistic locking conflicts. |
+| `problemDetails.detail.RESOURCE_NOT_FOUND.resource` | Detail of `ResourceNotFoundException` with the resource (`{0}`) and the id (`{1}`). |
+
+Example `messages_fr.properties`:
 
 ```properties
-problemDetails.title.RESOURCE_NOT_FOUND=Resource not found
-problemDetails.detail.UNAUTHORIZED=Authentication is required to access this resource
-problemDetails.detail.TYPE_MISMATCH.parameter=Parameter ''{0}'' must be of type {1}
+problemDetails.title.RESOURCE_NOT_FOUND=Ressource introuvable
+problemDetails.detail.UNAUTHORIZED=Une authentification est requise pour accéder à cette ressource
+problemDetails.detail.TYPE_MISMATCH.parameter=Le paramètre ''{0}'' doit être de type {1}
 ```
 
-Los mensajes con argumentos siguen el formato de `MessageFormat`, por lo que las comillas simples se escriben dobles (`''`). El `reason` de `@ResponseStatus` también se resuelve como clave de mensaje, igual que en Spring MVC. El `detail` de las excepciones de negocio es el mensaje de la propia excepción y no se traduce. Los mensajes de validación provienen de Bean Validation y los detalles de los errores de Spring MVC se personalizan con las claves de Spring (`problemDetail.<clase de la excepción>`).
+Messages with arguments follow the `MessageFormat` syntax, so single quotes are written twice (`''`). The `reason` of `@ResponseStatus` is also resolved as a message key, as in Spring MVC. Business exceptions translate their `detail` with `getDetailMessageCode()`.
 
-## Registro de Errores
+## Logging
 
-Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Los conflictos de datos se registran en DEBUG y las excepciones no controladas siempre en ERROR. Para ver los 4xx durante el desarrollo:
+Business exceptions and exceptions annotated with `@ResponseStatus` are logged at DEBUG level when they are 4xx and at ERROR level, with the full stack trace, when they are 5xx. Data conflicts are logged at DEBUG and unhandled exceptions always at ERROR. To see 4xx errors during development:
 
 ```yaml
 logging:
@@ -251,29 +278,29 @@ logging:
     io.github.neisserdev.problemdetails: debug
 ```
 
-## Integración con Spring Security
+## Spring Security Integration
 
-Con Spring Security presente, el starter inyecta el entry point (401) y el handler (403) en la cadena de filtros mediante beans `Customizer` de Spring Security 7. La configuración declarativa mantiene una estructura limpia:
+With Spring Security present, the starter wires the entry point (401) and the access denied handler (403) into the filter chain through Spring Security 7 `Customizer` beans, so the configuration stays clean:
 
 ```java
 @Bean
 SecurityFilterChain api(HttpSecurity http) throws Exception {
     return http
-            .authorizeHttpRequests(peticiones -> peticiones
-                    .requestMatchers("/publico/**").permitAll()
+            .authorizeHttpRequests(requests -> requests
+                    .requestMatchers("/public/**").permitAll()
                     .anyRequest().authenticated())
             .build();
 }
 ```
 
-Comportamiento estándar:
+Behavior:
 
-- Petición anónima a recurso protegido: 401 `UNAUTHORIZED` con cabecera `WWW-Authenticate`.
-- Usuario autenticado sin permisos: 403 `ACCESS_DENIED`.
-- `AccessDeniedException` en capa de servicio: (ej. mediante `@PreAuthorize`). El manejador delega a Spring Security, retornando 401 para usuarios anónimos y 403 para autenticados, corrigiendo la respuesta 403 por defecto de Spring MVC.
-- `BadCredentialsException` en controlador: 401 `INVALID_CREDENTIALS`.
+- Anonymous request to a protected resource: 401 `UNAUTHORIZED` with the `WWW-Authenticate` header.
+- Authenticated user without permissions: 403 `ACCESS_DENIED`.
+- `AccessDeniedException` in the service layer (for example from `@PreAuthorize`): the handler rethrows it to Spring Security, which returns 401 for anonymous requests and 403 for authenticated users.
+- `BadCredentialsException` in a controller: 401 `INVALID_CREDENTIALS`.
 
-Si la configuración invoca `.exceptionHandling(...)` explícitamente, esta tiene precedencia sobre la autoconfiguración. Para componentes de seguridad que capturan errores antes de llegar al `exceptionHandling` (como `oauth2ResourceServer` con un token caducado o `httpBasic`), es necesario pasar explícitamente la referencia del entry point:
+If the configuration calls `.exceptionHandling(...)` explicitly, it takes precedence over the auto-configuration. Security components that handle errors before `exceptionHandling` (such as `oauth2ResourceServer` with an expired token, or `httpBasic`) need the entry point passed explicitly:
 
 ```java
 @Bean
@@ -282,31 +309,31 @@ SecurityFilterChain api(HttpSecurity http, SecurityAuthenticationEntryPoint entr
             .oauth2ResourceServer(oauth -> oauth
                     .jwt(Customizer.withDefaults())
                     .authenticationEntryPoint(entryPoint))
-            .authorizeHttpRequests(peticiones -> peticiones.anyRequest().authenticated())
+            .authorizeHttpRequests(requests -> requests.anyRequest().authenticated())
             .build();
 }
 ```
 
-## Manejo de Errores en Filtros Personalizados
+## Error Handling in Custom Filters
 
-Las excepciones originadas dentro de filtros (`Filter` o `OncePerRequestFilter`) no son interceptadas por los `@RestControllerAdvice`. Para serializar la respuesta bajo el mismo formato RFC 9457 en la capa de filtros, se debe inyectar el componente `ProblemJsonWriter`:
+Exceptions raised inside filters (`Filter` or `OncePerRequestFilter`) never reach a `@RestControllerAdvice`. To write the response in the same RFC 9457 format from a filter, inject `ProblemJsonWriter`:
 
 ```java
 @Component
-class LimiteDePeticionesFilter extends OncePerRequestFilter {
+class RateLimitFilter extends OncePerRequestFilter {
 
     private final ProblemJsonWriter writer;
 
-    LimiteDePeticionesFilter(ProblemJsonWriter writer) {
+    RateLimitFilter(ProblemJsonWriter writer) {
         this.writer = writer;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        if (superaElLimite(request)) {
+        if (exceedsLimit(request)) {
             writer.write(response, request, ErrorCode.TOO_MANY_REQUESTS,
-                    "Has superado el límite de peticiones", "Retry-After", "30");
+                    "Request limit exceeded", "Retry-After", "30");
             return;
         }
         chain.doFilter(request, response);
@@ -314,36 +341,36 @@ class LimiteDePeticionesFilter extends OncePerRequestFilter {
 }
 ```
 
-Esta herramienta utiliza el `JsonMapper` central para garantizar que los atributos de extensión se acoplen correctamente en el nivel raíz del documento.
+It uses the Spring Boot `JsonMapper`, which serializes the extension members at the root of the document.
 
-## Modificación del Comportamiento Base
+## Customizing the Default Behavior
 
-Los componentes `@RestControllerAdvice` del proyecto tienen prioridad sobre el manejador global del starter. Para sobrescribir una respuesta específica, basta con manejar la excepción en un componente local. Para alterar el comportamiento general, se debe extender la clase `GlobalExceptionHandler`. La autoconfiguración detectará la nueva instancia y desactivará el manejador por defecto:
+The `@RestControllerAdvice` components of the project take precedence over the starter handler. To change a specific response, handle the exception in your own advice. To change the general behavior, extend `GlobalExceptionHandler`; the auto-configuration detects the subclass and disables the default handler:
 
 ```java
 @RestControllerAdvice
-class ManejadorDeErrores extends GlobalExceptionHandler {
+class ErrorHandler extends GlobalExceptionHandler {
 
-    ManejadorDeErrores(ProblemDetailsFactory fabrica, ProblemDetailsProperties propiedades) {
-        super(fabrica, propiedades.getSecurity().isEnabled());
+    ErrorHandler(ProblemDetailsFactory factory, ProblemDetailsProperties properties) {
+        super(factory, properties.getSecurity().isEnabled());
     }
 
     @ExceptionHandler(EntityNotFoundException.class)
-    ProblemDetail entidadNoEncontrada(EntityNotFoundException ex, HttpServletRequest request) {
+    ProblemDetail entityNotFound(EntityNotFoundException ex, HttpServletRequest request) {
         return getFactory().create(ErrorCode.RESOURCE_NOT_FOUND,
-                "El recurso solicitado no existe", request.getRequestURI());
+                "The requested resource does not exist", request.getRequestURI());
     }
 }
 ```
 
-Este patrón de sustitución aplica a cualquier componente central (`ProblemDetailsFactory`, `ProblemJsonWriter`, Entry Points).
+The same replacement pattern applies to every core component (`ProblemDetailsFactory`, `ProblemJsonWriter`, entry points).
 
-## Limitaciones
+## Limitations
 
-- Compatibilidad exclusiva con entornos Servlet (Spring MVC). No aplicable a aplicaciones WebFlux.
-- Excepciones no capturadas en filtros personalizados son delegadas al `BasicErrorController` de Spring Boot. Se recomienda implementar bloques `try/catch` y utilizar `ProblemJsonWriter`.
-- Compilado con Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). El CI ejecuta las pruebas con Spring Boot 4.0.8 y 4.1.1 sobre Java 17, 21 y 25.
+- Servlet environments (Spring MVC) only. It does not apply to WebFlux applications.
+- Exceptions not caught inside custom filters are delegated to the Spring Boot `BasicErrorController`. Catch them and use `ProblemJsonWriter`.
+- Built with Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). CI runs the tests with Spring Boot 4.0.8 and 4.1.1 on Java 17, 21 and 25.
 
-## Licencia
+## License
 
 MIT

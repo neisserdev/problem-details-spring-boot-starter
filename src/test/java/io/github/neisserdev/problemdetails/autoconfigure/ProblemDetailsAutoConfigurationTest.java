@@ -41,16 +41,16 @@ import tools.jackson.databind.json.JsonMapper;
 class ProblemDetailsAutoConfigurationTest {
 
     private static final String CUSTOMIZER = "problemDetailsExceptionHandlingCustomizer";
-    private static final String MANEJADOR = "problemDetailsExceptionHandler";
+    private static final String HANDLER = "problemDetailsExceptionHandler";
     private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
 
-    private final WebApplicationContextRunner contexto = new WebApplicationContextRunner()
+    private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(
                     JacksonAutoConfiguration.class, ProblemDetailsAutoConfiguration.class));
 
     @Test
-    void registraTodoPorDefecto() {
-        contexto.run(ctx -> assertThat(ctx)
+    void registersEverythingByDefault() {
+        contextRunner.run(ctx -> assertThat(ctx)
                 .hasSingleBean(ProblemDetailsFactory.class)
                 .hasSingleBean(GlobalExceptionHandler.class)
                 .hasSingleBean(ProblemJsonWriter.class)
@@ -60,8 +60,8 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void laBanderaDeSeguridadSoloApagaLaIntegracionConSpringSecurity() {
-        contexto.withPropertyValues("problem-details.security.enabled=false")
+    void theSecurityFlagOnlyDisablesTheSpringSecurityIntegration() {
+        contextRunner.withPropertyValues("problem-details.security.enabled=false")
                 .run(ctx -> assertThat(ctx)
                         .hasSingleBean(GlobalExceptionHandler.class)
                         .hasSingleBean(ProblemJsonWriter.class)
@@ -71,8 +71,8 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void arrancaSinSpringSecurityEnElClasspath() {
-        contexto.withClassLoader(new FilteredClassLoader("org.springframework.security"))
+    void startsWithoutSpringSecurityOnTheClasspath() {
+        contextRunner.withClassLoader(new FilteredClassLoader("org.springframework.security"))
                 .run(ctx -> assertThat(ctx)
                         .hasNotFailed()
                         .hasSingleBean(GlobalExceptionHandler.class)
@@ -82,7 +82,7 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void sinJsonMapperNoHayEscritorNiSeguridadPeroSiManejador() {
+    void withoutJsonMapperThereIsNoWriterNorSecurityButThereIsAHandler() {
         new WebApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(ProblemDetailsAutoConfiguration.class))
                 .run(ctx -> assertThat(ctx)
@@ -93,33 +93,33 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void cedeElSitioAUnManejadorPropioDeLaAplicacion() {
-        contexto.withUserConfiguration(ConManejadorPropio.class)
+    void backsOffWhenTheApplicationDefinesItsOwnHandler() {
+        contextRunner.withUserConfiguration(CustomHandlerConfiguration.class)
                 .run(ctx -> {
-                    assertThat(ctx).hasSingleBean(ResponseEntityExceptionHandler.class).doesNotHaveBean(MANEJADOR);
-                    assertThat(ctx.getBean(ResponseEntityExceptionHandler.class)).isInstanceOf(ManejadorPropio.class);
+                    assertThat(ctx).hasSingleBean(ResponseEntityExceptionHandler.class).doesNotHaveBean(HANDLER);
+                    assertThat(ctx.getBean(ResponseEntityExceptionHandler.class)).isInstanceOf(CustomHandler.class);
                 });
     }
 
     @Test
-    void respetaUnaFactoryPropia() {
-        contexto.withBean(ProblemDetailsFactory.class, () -> new ProblemDetailsFactory("urn:propio:"))
+    void usesACustomFactory() {
+        contextRunner.withBean(ProblemDetailsFactory.class, () -> new ProblemDetailsFactory("urn:custom:"))
                 .run(ctx -> assertThat(ctx.getBean(ProblemDetailsFactory.class).getBaseType())
-                        .isEqualTo("urn:propio:"));
+                        .isEqualTo("urn:custom:"));
     }
 
     @Test
-    void traduceConElMessageSourceDeLaAplicacion() {
-        contexto.withBean("messageSource", MessageSource.class, () -> {
-                    StaticMessageSource mensajes = new StaticMessageSource();
-                    mensajes.addMessage("problemDetails.title.RESOURCE_NOT_FOUND", Locale.ENGLISH, "Resource not found");
-                    return mensajes;
+    void translatesWithTheApplicationMessageSource() {
+        contextRunner.withBean("messageSource", MessageSource.class, () -> {
+                    StaticMessageSource messages = new StaticMessageSource();
+                    messages.addMessage("problemDetails.title.RESOURCE_NOT_FOUND", Locale.ENGLISH, "Nothing here");
+                    return messages;
                 })
                 .run(ctx -> {
                     LocaleContextHolder.setLocale(Locale.ENGLISH);
                     try {
                         assertThat(ctx.getBean(ProblemDetailsFactory.class).title(ErrorCode.RESOURCE_NOT_FOUND))
-                                .isEqualTo("Resource not found");
+                                .isEqualTo("Nothing here");
                     } finally {
                         LocaleContextHolder.resetLocaleContext();
                     }
@@ -127,80 +127,95 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void incluyeElTraceIdDeMicrometerTracing() {
+    void theLanguagePropertySelectsTheBundledTexts() {
+        contextRunner.run(ctx -> assertThat(ctx.getBean(ProblemDetailsFactory.class)
+                .title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Resource not found"));
+        contextRunner.withPropertyValues("problem-details.language=es")
+                .run(ctx -> assertThat(ctx.getBean(ProblemDetailsFactory.class)
+                        .title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Recurso no encontrado"));
+    }
+
+    @Test
+    void failsOnStartupWithAnUnsupportedLanguage() {
+        contextRunner.withPropertyValues("problem-details.language=fr")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    void includesTheTraceIdFromMicrometerTracing() {
         Tracer tracer = mock(Tracer.class, RETURNS_DEEP_STUBS);
         when(tracer.currentSpan().context().traceId()).thenReturn(TRACE_ID);
 
-        contexto.withBean(Tracer.class, () -> tracer)
-                .run(ctx -> assertThat(propiedadesDe(ctx)).containsEntry("traceId", TRACE_ID));
+        contextRunner.withBean(Tracer.class, () -> tracer)
+                .run(ctx -> assertThat(propertiesOf(ctx)).containsEntry("traceId", TRACE_ID));
     }
 
     @Test
-    void sinTrazaActivaNoIncluyeTraceId() {
-        contexto.withBean(Tracer.class, () -> Tracer.NOOP)
-                .run(ctx -> assertThat(propiedadesDe(ctx)).doesNotContainKey("traceId"));
+    void omitsTheTraceIdWithoutAnActiveTrace() {
+        contextRunner.withBean(Tracer.class, () -> Tracer.NOOP)
+                .run(ctx -> assertThat(propertiesOf(ctx)).doesNotContainKey("traceId"));
     }
 
     @Test
-    void sinBeanTracerNoIncluyeTraceIdNiFalla() {
-        contexto.run(ctx -> {
+    void omitsTheTraceIdAndStartsWithoutATracerBean() {
+        contextRunner.run(ctx -> {
             assertThat(ctx).hasNotFailed().hasSingleBean(TraceIdProvider.class);
-            assertThat(propiedadesDe(ctx)).doesNotContainKey("traceId");
+            assertThat(propertiesOf(ctx)).doesNotContainKey("traceId");
         });
     }
 
     @Test
-    void arrancaSinMicrometerTracingEnElClasspath() {
-        contexto.withClassLoader(new FilteredClassLoader("io.micrometer.tracing"))
+    void startsWithoutMicrometerTracingOnTheClasspath() {
+        contextRunner.withClassLoader(new FilteredClassLoader("io.micrometer.tracing"))
                 .run(ctx -> {
                     assertThat(ctx).hasNotFailed().doesNotHaveBean(TraceIdProvider.class);
-                    assertThat(propiedadesDe(ctx)).doesNotContainKey("traceId");
+                    assertThat(propertiesOf(ctx)).doesNotContainKey("traceId");
                 });
     }
 
     @Test
-    void usaUnProveedorDeTrazaPropio() {
-        contexto.withBean(TraceIdProvider.class, () -> () -> "propio")
-                .run(ctx -> assertThat(propiedadesDe(ctx)).containsEntry("traceId", "propio"));
+    void usesACustomTraceIdProvider() {
+        contextRunner.withBean(TraceIdProvider.class, () -> () -> "custom")
+                .run(ctx -> assertThat(propertiesOf(ctx)).containsEntry("traceId", "custom"));
     }
 
     @Test
-    void laPropiedadDesactivaElTraceIdAunqueHayaProveedorPropio() {
+    void thePropertyDisablesTheTraceIdEvenWithACustomProvider() {
         Tracer tracer = mock(Tracer.class, RETURNS_DEEP_STUBS);
         when(tracer.currentSpan().context().traceId()).thenReturn(TRACE_ID);
 
-        contexto.withBean(Tracer.class, () -> tracer)
+        contextRunner.withBean(Tracer.class, () -> tracer)
                 .withPropertyValues("problem-details.trace-id.enabled=false")
                 .run(ctx -> {
                     assertThat(ctx).doesNotHaveBean("problemDetailsTraceIdProvider");
-                    assertThat(propiedadesDe(ctx)).doesNotContainKey("traceId");
+                    assertThat(propertiesOf(ctx)).doesNotContainKey("traceId");
                 });
-        contexto.withBean(TraceIdProvider.class, () -> () -> "propio")
+        contextRunner.withBean(TraceIdProvider.class, () -> () -> "custom")
                 .withPropertyValues("problem-details.trace-id.enabled=false")
-                .run(ctx -> assertThat(propiedadesDe(ctx)).doesNotContainKey("traceId"));
+                .run(ctx -> assertThat(propertiesOf(ctx)).doesNotContainKey("traceId"));
     }
 
-    private static Map<String, Object> propiedadesDe(ApplicationContext ctx) {
+    private static Map<String, Object> propertiesOf(ApplicationContext ctx) {
         return ctx.getBean(ProblemDetailsFactory.class)
                 .create(ErrorCode.INTERNAL_ERROR, "x", "/a")
                 .getProperties();
     }
 
     @Test
-    void usaLaBaseConfiguradaParaElType() {
-        contexto.withPropertyValues("problem-details.base-type-url=https://api.ejemplo.com/problemas")
+    void usesTheConfiguredBaseForTheType() {
+        contextRunner.withPropertyValues("problem-details.base-type-url=https://api.example.com/problems")
                 .run(ctx -> assertThat(ctx.getBean(ProblemDetailsFactory.class).getBaseType())
-                        .isEqualTo("https://api.ejemplo.com/problemas/"));
+                        .isEqualTo("https://api.example.com/problems/"));
     }
 
     @Test
-    void fallaAlArrancarSiLaBaseNoFormaUnUri() {
-        contexto.withPropertyValues("problem-details.base-type-url=https://api ejemplo.com/")
+    void failsOnStartupWhenTheBaseIsNotAValidUri() {
+        contextRunner.withPropertyValues("problem-details.base-type-url=https://api example.com/")
                 .run(ctx -> assertThat(ctx).hasFailed());
     }
 
     @Test
-    void noSeActivaFueraDeUnaAplicacionServlet() {
+    void doesNotActivateOutsideAServletApplication() {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(
                         JacksonAutoConfiguration.class, ProblemDetailsAutoConfiguration.class))
@@ -210,26 +225,26 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void elEscritorDejaLasExtensionesEnLaRaizDelJson() {
-        contexto.run(ctx -> {
-            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/privado/datos");
+    void theWriterPutsExtensionsAtTheRootOfTheJson() {
+        contextRunner.run(ctx -> {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/private/data");
             MockHttpServletResponse response = new MockHttpServletResponse();
 
             ctx.getBean(ProblemJsonWriter.class).write(response, request, ErrorCode.TOO_MANY_REQUESTS,
-                    "Has superado el limite de peticiones", "Retry-After", "30");
+                    "Request limit exceeded", "Retry-After", "30");
 
             assertThat(response.getStatus()).isEqualTo(429);
             assertThat(response.getContentType()).startsWith("application/problem+json");
             assertThat(response.getHeader("Retry-After")).isEqualTo("30");
 
-            // Extensiones en la raíz, no dentro de "properties"
+            // Extensions at the root, not inside "properties"
             @SuppressWarnings("unchecked")
-            Map<String, Object> cuerpo = ctx.getBean(JsonMapper.class)
+            Map<String, Object> body = ctx.getBean(JsonMapper.class)
                     .readValue(response.getContentAsString(), Map.class);
-            assertThat(cuerpo)
+            assertThat(body)
                     .containsEntry("code", "TOO_MANY_REQUESTS")
                     .containsEntry("status", 429)
-                    .containsEntry("instance", "/privado/datos")
+                    .containsEntry("instance", "/private/data")
                     .containsEntry("type", "/problems/TOO_MANY_REQUESTS")
                     .containsKey("timestamp")
                     .doesNotContainKey("properties");
@@ -237,8 +252,8 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void elEscritorNoTocaUnaRespuestaYaEnviada() {
-        contexto.run(ctx -> {
+    void theWriterLeavesACommittedResponseUntouched() {
+        contextRunner.run(ctx -> {
             MockHttpServletResponse response = new MockHttpServletResponse();
             response.setCommitted(true);
 
@@ -251,32 +266,32 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void elEscritorAceptaUnProblemaYaConstruido() {
-        contexto.run(ctx -> {
+    void theWriterAcceptsAnAlreadyBuiltProblem() {
+        contextRunner.run(ctx -> {
             ProblemDetailsFactory factory = ctx.getBean(ProblemDetailsFactory.class);
-            ProblemDetail problema = factory.create(ErrorCode.RESOURCE_CONFLICT, "Conflicto", "/a",
+            ProblemDetail problem = factory.create(ErrorCode.RESOURCE_CONFLICT, "Conflict", "/a",
                     Map.of("version", 3));
             MockHttpServletResponse response = new MockHttpServletResponse();
 
-            ctx.getBean(ProblemJsonWriter.class).write(response, problema);
+            ctx.getBean(ProblemJsonWriter.class).write(response, problem);
 
             assertThat(response.getStatus()).isEqualTo(409);
             assertThat(response.getContentType()).startsWith("application/problem+json");
             @SuppressWarnings("unchecked")
-            Map<String, Object> cuerpo = ctx.getBean(JsonMapper.class)
+            Map<String, Object> body = ctx.getBean(JsonMapper.class)
                     .readValue(response.getContentAsString(), Map.class);
-            assertThat(cuerpo).containsEntry("code", "RESOURCE_CONFLICT").containsEntry("version", 3);
+            assertThat(body).containsEntry("code", "RESOURCE_CONFLICT").containsEntry("version", 3);
         });
     }
 
     @Test
-    void elEntryPointEnviaLaCabeceraWwwAuthenticateConfigurada() {
-        contexto.withPropertyValues("problem-details.security.www-authenticate=Basic realm=\"api\"")
+    void theEntryPointSendsTheConfiguredWwwAuthenticateHeader() {
+        contextRunner.withPropertyValues("problem-details.security.www-authenticate=Basic realm=\"api\"")
                 .run(ctx -> {
                     MockHttpServletResponse response = new MockHttpServletResponse();
                     ctx.getBean(SecurityAuthenticationEntryPoint.class).commence(
-                            new MockHttpServletRequest("GET", "/privado"), response,
-                            new InsufficientAuthenticationException("sin credenciales"));
+                            new MockHttpServletRequest("GET", "/private"), response,
+                            new InsufficientAuthenticationException("no credentials"));
 
                     assertThat(response.getStatus()).isEqualTo(401);
                     assertThat(response.getHeader("WWW-Authenticate")).isEqualTo("Basic realm=\"api\"");
@@ -285,13 +300,13 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
-    void elEntryPointOmiteLaCabeceraSiSeConfiguraVacia() {
-        contexto.withPropertyValues("problem-details.security.www-authenticate=")
+    void theEntryPointOmitsTheHeaderWhenConfiguredEmpty() {
+        contextRunner.withPropertyValues("problem-details.security.www-authenticate=")
                 .run(ctx -> {
                     MockHttpServletResponse response = new MockHttpServletResponse();
                     ctx.getBean(SecurityAuthenticationEntryPoint.class).commence(
-                            new MockHttpServletRequest("GET", "/privado"), response,
-                            new InsufficientAuthenticationException("sin credenciales"));
+                            new MockHttpServletRequest("GET", "/private"), response,
+                            new InsufficientAuthenticationException("no credentials"));
 
                     assertThat(response.getStatus()).isEqualTo(401);
                     assertThat(response.getHeader("WWW-Authenticate")).isNull();
@@ -299,18 +314,18 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Configuration(proxyBeanMethods = false)
-    static class ConManejadorPropio {
+    static class CustomHandlerConfiguration {
 
         @Bean
-        ManejadorPropio manejadorPropio(ProblemDetailsFactory fabrica) {
-            return new ManejadorPropio(fabrica);
+        CustomHandler customHandler(ProblemDetailsFactory factory) {
+            return new CustomHandler(factory);
         }
     }
 
-    static class ManejadorPropio extends GlobalExceptionHandler {
+    static class CustomHandler extends GlobalExceptionHandler {
 
-        ManejadorPropio(ProblemDetailsFactory fabrica) {
-            super(fabrica, true);
+        CustomHandler(ProblemDetailsFactory factory) {
+            super(factory, true);
         }
     }
 }

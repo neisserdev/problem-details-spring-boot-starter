@@ -1,4 +1,4 @@
-package io.github.neisserdev.problemdetails.integracion;
+package io.github.neisserdev.problemdetails.integration;
 
 import jakarta.validation.constraints.Min;
 
@@ -7,9 +7,9 @@ import org.springframework.validation.annotation.Validated;
 
 @Service
 @Validated
-public class ServicioDePrueba {
+public class TestService {
 
-    public String buscar(@Min(1) int n) {
-        return "resultado " + n;
+    public String find(@Min(1) int n) {
+        return "result " + n;
     }
 }

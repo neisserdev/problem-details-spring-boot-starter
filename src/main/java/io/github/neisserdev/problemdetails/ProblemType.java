@@ -3,14 +3,14 @@ package io.github.neisserdev.problemdetails;
 import org.springframework.http.HttpStatusCode;
 
 /**
- * Tipo de problema según RFC 9457. Define el código, el título y el status HTTP.
+ * RFC 9457 problem type. Defines the code, the title and the HTTP status.
  *
- * <p>{@link ErrorCode} es el catálogo incluido. Los catálogos propios se
- * declaran como enums que implementan esta interfaz y se lanzan mediante una
- * subclase de {@link BusinessException}.
+ * <p>{@link ErrorCode} is the built-in catalog. Custom catalogs are declared
+ * as enums that implement this interface and are thrown through a subclass
+ * of {@link BusinessException}.
  *
- * <p>El código forma parte del {@code type}, por lo que debe ser válido dentro
- * de un URI. Convención recomendada: {@code MAYUSCULAS_CON_GUIONES_BAJOS}.
+ * <p>The code is part of the {@code type}, so it must be valid inside a URI.
+ * Recommended convention: {@code UPPER_CASE_WITH_UNDERSCORES}.
  *
  * @see ErrorCode
  * @see BusinessException
@@ -18,23 +18,23 @@ import org.springframework.http.HttpStatusCode;
 public interface ProblemType {
 
     /**
-     * Código estable del error. Se expone en {@code code} y al final del {@code type}.
+     * Stable error code. Exposed in {@code code} and at the end of the {@code type}.
      *
-     * @return el código, sin espacios ni caracteres reservados de URI
+     * @return the code, without spaces or reserved URI characters
      */
     String getCode();
 
     /**
-     * Resumen del tipo de problema. El detalle de cada caso va en {@code detail}.
+     * Summary of the problem type. The specifics of each occurrence go in {@code detail}.
      *
-     * @return el título
+     * @return the title
      */
     String getTitle();
 
     /**
-     * Status HTTP de la respuesta.
+     * HTTP status of the response.
      *
-     * @return el status
+     * @return the status
      */
     HttpStatusCode getHttpStatus();
 }

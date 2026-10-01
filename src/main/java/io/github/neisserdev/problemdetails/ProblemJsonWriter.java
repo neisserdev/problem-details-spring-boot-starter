@@ -13,16 +13,16 @@ import org.springframework.http.ProblemDetail;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Escribe {@code application/problem+json} directamente en la respuesta. Se usa
- * en filtros, donde los errores no llegan al {@code @RestControllerAdvice}.
+ * Writes {@code application/problem+json} straight to the response. Meant for
+ * filters, where errors never reach the {@code @RestControllerAdvice}.
  *
  * <pre>{@code
  * writer.write(response, request, ErrorCode.TOO_MANY_REQUESTS,
- *         "Has superado el límite de peticiones", "Retry-After", "30");
+ *         "Request limit exceeded", "Retry-After", "30");
  * }</pre>
  *
- * <p>Requiere el {@link JsonMapper} de Spring Boot, que serializa las
- * extensiones de {@link ProblemDetail} en la raíz del JSON.
+ * <p>Requires the Spring Boot {@link JsonMapper}, which serializes the
+ * {@link ProblemDetail} extensions at the root of the JSON.
  */
 public class ProblemJsonWriter {
 
@@ -30,8 +30,8 @@ public class ProblemJsonWriter {
     private final ProblemDetailsFactory factory;
 
     /**
-     * @param jsonMapper mapper del contexto de Spring
-     * @param factory    factory con la que se construyen los problemas
+     * @param jsonMapper mapper of the Spring context
+     * @param factory    factory that builds the problems
      */
     public ProblemJsonWriter(JsonMapper jsonMapper, ProblemDetailsFactory factory) {
         this.jsonMapper = Objects.requireNonNull(jsonMapper, "jsonMapper");
@@ -39,18 +39,18 @@ public class ProblemJsonWriter {
     }
 
     /**
-     * @return la factory con la que se construyen los problemas
+     * @return the factory that builds the problems
      */
     public ProblemDetailsFactory getFactory() {
         return factory;
     }
 
     /**
-     * @param response respuesta en la que escribir
-     * @param request  petición en curso, para el {@code instance}
-     * @param type     tipo de problema
-     * @param detail   explicación específica de esta ocurrencia
-     * @throws IOException si falla la escritura en la respuesta
+     * @param response response to write to
+     * @param request  current request, for the {@code instance}
+     * @param type     problem type
+     * @param detail   specific explanation of this occurrence
+     * @throws IOException if writing the response fails
      */
     public void write(HttpServletResponse response, HttpServletRequest request,
                       ProblemType type, String detail) throws IOException {
@@ -58,13 +58,13 @@ public class ProblemJsonWriter {
     }
 
     /**
-     * @param response    respuesta en la que escribir
-     * @param request     petición en curso, para el {@code instance}
-     * @param type        tipo de problema
-     * @param detail      explicación específica de esta ocurrencia
-     * @param headerName  cabecera adicional, por ejemplo {@code Retry-After}, o {@code null}
-     * @param headerValue valor de esa cabecera, o {@code null}
-     * @throws IOException si falla la escritura en la respuesta
+     * @param response    response to write to
+     * @param request     current request, for the {@code instance}
+     * @param type        problem type
+     * @param detail      specific explanation of this occurrence
+     * @param headerName  additional header, for example {@code Retry-After}, or {@code null}
+     * @param headerValue value of that header, or {@code null}
+     * @throws IOException if writing the response fails
      */
     public void write(HttpServletResponse response, HttpServletRequest request,
                       ProblemType type, String detail,
@@ -77,14 +77,14 @@ public class ProblemJsonWriter {
     }
 
     /**
-     * Escribe un problema ya construido, por ejemplo con extensiones propias.
+     * Writes an already built problem, for example with custom extensions.
      *
-     * @param response respuesta en la que escribir
-     * @param problem  problema a serializar, su {@code status} es el de la respuesta
-     * @throws IOException si falla la escritura en la respuesta
+     * @param response response to write to
+     * @param problem  problem to serialize, its {@code status} is the one of the response
+     * @throws IOException if writing the response fails
      */
     public void write(HttpServletResponse response, ProblemDetail problem) throws IOException {
-        // Respuesta ya enviada, no se puede escribir
+        // Response already sent, it cannot be written
         if (response.isCommitted()) {
             return;
         }

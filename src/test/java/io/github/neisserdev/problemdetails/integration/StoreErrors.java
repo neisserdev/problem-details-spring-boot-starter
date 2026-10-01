@@ -1,21 +1,21 @@
-package io.github.neisserdev.problemdetails.integracion;
+package io.github.neisserdev.problemdetails.integration;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 
 import io.github.neisserdev.problemdetails.ProblemType;
 
-// Catálogo propio de un proyecto
-enum ErroresDeTienda implements ProblemType {
+// Custom catalog of a consumer project
+enum StoreErrors implements ProblemType {
 
-    STOCK_INSUFICIENTE("Stock insuficiente", HttpStatus.CONFLICT),
-    PASARELA_NO_DISPONIBLE("Pasarela de pago no disponible", HttpStatus.SERVICE_UNAVAILABLE);
+    INSUFFICIENT_STOCK("Insufficient stock", HttpStatus.CONFLICT),
+    PAYMENT_GATEWAY_UNAVAILABLE("Payment gateway unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 
-    private final String titulo;
+    private final String title;
     private final HttpStatus status;
 
-    ErroresDeTienda(String titulo, HttpStatus status) {
-        this.titulo = titulo;
+    StoreErrors(String title, HttpStatus status) {
+        this.title = title;
         this.status = status;
     }
 
@@ -26,7 +26,7 @@ enum ErroresDeTienda implements ProblemType {
 
     @Override
     public String getTitle() {
-        return titulo;
+        return title;
     }
 
     @Override

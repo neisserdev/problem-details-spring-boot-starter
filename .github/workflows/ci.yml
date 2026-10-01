@@ -25,12 +25,12 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: maven
-      - name: Compilar y probar
+      - name: Build and test
         run: mvn -B -ntp verify -Dspring-boot.version=${{ matrix.boot }}
 
-  # Javadoc y fuentes como en la release, sin firmar
-  empaquetado:
-    name: Empaquetado de la release
+  # Javadoc and sources as in the release, unsigned
+  package:
+    name: Release packaging
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,5 +39,5 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Generar javadoc y fuentes
+      - name: Build javadoc and sources
         run: mvn -B -ntp verify -Prelease -DskipTests -Dgpg.skip

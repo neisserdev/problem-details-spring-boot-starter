@@ -13,7 +13,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-// Subclase del manejador como se describe en el README
+// Handler subclass as described in the README
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProblemDetailsExtensionTest {
@@ -22,37 +22,37 @@ class ProblemDetailsExtensionTest {
     private MockMvc mvc;
 
     @Autowired
-    private ApplicationContext contexto;
+    private ApplicationContext context;
 
     @Test
-    void laSubclaseSustituyeAlManejadorDelStarter() {
-        assertThat(contexto.getBeansOfType(ResponseEntityExceptionHandler.class).values())
+    void theSubclassReplacesTheStarterHandler() {
+        assertThat(context.getBeansOfType(ResponseEntityExceptionHandler.class).values())
                 .singleElement()
-                .isInstanceOf(ManejadorExtendido.class);
+                .isInstanceOf(ExtendedExceptionHandler.class);
     }
 
     @Test
-    void atiendeSusPropiasExcepciones() throws Exception {
-        mvc.perform(get("/extension/retirado"))
+    void handlesItsOwnExceptions() throws Exception {
+        mvc.perform(get("/extension/retired"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
-                .andExpect(jsonPath("$.detail").value("El articulo se retiro"))
-                .andExpect(jsonPath("$.instance").value("/extension/retirado"))
+                .andExpect(jsonPath("$.detail").value("The item was retired"))
+                .andExpect(jsonPath("$.instance").value("/extension/retired"))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
     @Test
-    void conservaElComportamientoHeredado() throws Exception {
-        mvc.perform(get("/extension/articulos/3"))
+    void keepsTheInheritedBehavior() throws Exception {
+        mvc.perform(get("/extension/items/3"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(jsonPath("$.resourceId").value("3"));
 
-        mvc.perform(get("/extension/fallo"))
+        mvc.perform(get("/extension/failure"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
 
-        mvc.perform(get("/extension/no-existe"))
+        mvc.perform(get("/extension/no-such-route"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ENDPOINT_NOT_FOUND"));
     }

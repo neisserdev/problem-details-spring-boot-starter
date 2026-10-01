@@ -4,11 +4,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Base de las excepciones de negocio. Cada subclase indica su {@link ProblemType}
- * y el manejador global la convierte en {@code ProblemDetail}.
+ * Base of business exceptions. Each subclass declares its {@link ProblemType}
+ * and the global handler turns it into a {@code ProblemDetail}.
  *
- * <p>Las propiedades de {@link #getProperties()} se añaden como miembros de
- * extensión del JSON y las de {@link #getHeaders()} como cabeceras HTTP.
+ * <p>The entries of {@link #getProperties()} are added as extension members
+ * of the JSON and those of {@link #getHeaders()} as HTTP headers.
+ *
+ * <p>The {@code detail} is the exception message. Override
+ * {@link #getDetailMessageCode()} to translate it with a message key.
  */
 public abstract class BusinessException extends RuntimeException {
 
@@ -17,8 +20,8 @@ public abstract class BusinessException extends RuntimeException {
     private final transient ProblemType problemType;
 
     /**
-     * @param problemType tipo de problema
-     * @param message     texto del {@code detail}
+     * @param problemType problem type
+     * @param message     text of the {@code detail}
      */
     protected BusinessException(ProblemType problemType, String message) {
         super(message);
@@ -26,9 +29,9 @@ public abstract class BusinessException extends RuntimeException {
     }
 
     /**
-     * @param problemType tipo de problema
-     * @param message     texto del {@code detail}
-     * @param cause       causa original, solo para los logs
+     * @param problemType problem type
+     * @param message     text of the {@code detail}
+     * @param cause       original cause, for the logs only
      */
     protected BusinessException(ProblemType problemType, String message, Throwable cause) {
         super(message, cause);
@@ -36,22 +39,39 @@ public abstract class BusinessException extends RuntimeException {
     }
 
     /**
-     * @return el tipo de problema
+     * @return the problem type
      */
     public ProblemType getProblemType() { return problemType; }
 
     /**
-     * Miembros de extensión del ProblemDetail. Las claves {@code code} y
-     * {@code timestamp} están reservadas y se ignoran.
+     * Extension members of the ProblemDetail. The {@code code} and
+     * {@code timestamp} keys are reserved and ignored.
      *
-     * @return propiedades adicionales, vacío por defecto
+     * @return additional properties, empty by default
      */
     public Map<String, Object> getProperties() { return Map.of(); }
 
     /**
-     * Cabeceras HTTP de la respuesta, por ejemplo {@code Retry-After} en un 429 o 503.
+     * HTTP headers of the response, for example {@code Retry-After} in a 429 or 503.
      *
-     * @return cabeceras adicionales, vacío por defecto
+     * @return additional headers, empty by default
      */
     public Map<String, String> getHeaders() { return Map.of(); }
+
+    /**
+     * Message key of the {@code detail}, resolved with the application
+     * {@code MessageSource} like titles. When the key has no translation, the
+     * exception message is used.
+     *
+     * @return the key, or {@code null} to always use the exception message
+     */
+    public String getDetailMessageCode() { return null; }
+
+    /**
+     * Arguments for the {@code {0}}, {@code {1}}... placeholders of the
+     * {@link #getDetailMessageCode() message key}.
+     *
+     * @return the arguments, empty by default
+     */
+    public Object[] getDetailMessageArguments() { return new Object[0]; }
 }

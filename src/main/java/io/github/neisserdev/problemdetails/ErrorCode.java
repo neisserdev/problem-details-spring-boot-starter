@@ -9,44 +9,46 @@ import java.util.stream.Stream;
 import org.springframework.http.HttpStatus;
 
 /**
- * Catálogo base de errores. Cada valor define el código, el título y el status HTTP.
+ * Built-in error catalog. Each value defines the code, the title and the HTTP status.
  *
- * <p>Los errores de Spring MVC (método no permitido, ruta inexistente, etc.)
- * también reciben un código de este catálogo mediante {@link #forStatus(int)}.
+ * <p>Spring MVC errors (method not allowed, unknown route, etc.) also get a
+ * code from this catalog through {@link #forStatus(int)}.
  *
- * <p>Para errores propios se implementa {@link ProblemType} en un enum aparte.
+ * <p>Custom errors implement {@link ProblemType} in a separate enum.
  *
- * <p>Los títulos se pueden traducir con la clave {@code problemDetails.title.CODIGO}.
+ * <p>The titles returned here are the English defaults. Responses use
+ * {@link ProblemDetailsFactory#title(ProblemType)}, which applies the
+ * configured language and the {@code problemDetails.title.CODE} translations.
  */
 public enum ErrorCode implements ProblemType {
 
-    // Validación y formato
-    VALIDATION_ERROR("Error de validación", HttpStatus.BAD_REQUEST),
-    MALFORMED_REQUEST("Petición mal formada", HttpStatus.BAD_REQUEST),
-    TYPE_MISMATCH("Parámetro con tipo incorrecto", HttpStatus.BAD_REQUEST),
-    CONSTRAINT_VIOLATION("Restricción no satisfecha", HttpStatus.BAD_REQUEST),
+    // Validation and format
+    VALIDATION_ERROR("Validation error", HttpStatus.BAD_REQUEST),
+    MALFORMED_REQUEST("Malformed request", HttpStatus.BAD_REQUEST),
+    TYPE_MISMATCH("Invalid parameter type", HttpStatus.BAD_REQUEST),
+    CONSTRAINT_VIOLATION("Constraint violation", HttpStatus.BAD_REQUEST),
 
-    // Autenticación y autorización
-    UNAUTHORIZED("No autenticado", HttpStatus.UNAUTHORIZED),
-    INVALID_CREDENTIALS("Credenciales inválidas", HttpStatus.UNAUTHORIZED),
-    ACCESS_DENIED("Acceso denegado", HttpStatus.FORBIDDEN),
+    // Authentication and authorization
+    UNAUTHORIZED("Authentication required", HttpStatus.UNAUTHORIZED),
+    INVALID_CREDENTIALS("Invalid credentials", HttpStatus.UNAUTHORIZED),
+    ACCESS_DENIED("Access denied", HttpStatus.FORBIDDEN),
 
-    // Negocio
-    RESOURCE_NOT_FOUND("Recurso no encontrado", HttpStatus.NOT_FOUND),
-    RESOURCE_CONFLICT("Conflicto con el estado actual del recurso", HttpStatus.CONFLICT),
-    BUSINESS_RULE_VIOLATION("Regla de negocio no satisfecha", HttpStatus.UNPROCESSABLE_CONTENT),
+    // Business
+    RESOURCE_NOT_FOUND("Resource not found", HttpStatus.NOT_FOUND),
+    RESOURCE_CONFLICT("Conflict with the current state of the resource", HttpStatus.CONFLICT),
+    BUSINESS_RULE_VIOLATION("Business rule violation", HttpStatus.UNPROCESSABLE_CONTENT),
 
-    // Protocolo HTTP
-    ENDPOINT_NOT_FOUND("Endpoint no encontrado", HttpStatus.NOT_FOUND),
-    METHOD_NOT_ALLOWED("Método HTTP no permitido", HttpStatus.METHOD_NOT_ALLOWED),
-    NOT_ACCEPTABLE("Formato de respuesta no aceptable", HttpStatus.NOT_ACCEPTABLE),
-    UNSUPPORTED_MEDIA_TYPE("Tipo de contenido no soportado", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
-    CONTENT_TOO_LARGE("Contenido de la petición demasiado grande", HttpStatus.CONTENT_TOO_LARGE),
-    TOO_MANY_REQUESTS("Demasiadas peticiones", HttpStatus.TOO_MANY_REQUESTS),
-    SERVICE_UNAVAILABLE("Servicio no disponible", HttpStatus.SERVICE_UNAVAILABLE),
+    // HTTP protocol
+    ENDPOINT_NOT_FOUND("Endpoint not found", HttpStatus.NOT_FOUND),
+    METHOD_NOT_ALLOWED("Method not allowed", HttpStatus.METHOD_NOT_ALLOWED),
+    NOT_ACCEPTABLE("Not acceptable", HttpStatus.NOT_ACCEPTABLE),
+    UNSUPPORTED_MEDIA_TYPE("Unsupported media type", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
+    CONTENT_TOO_LARGE("Content too large", HttpStatus.CONTENT_TOO_LARGE),
+    TOO_MANY_REQUESTS("Too many requests", HttpStatus.TOO_MANY_REQUESTS),
+    SERVICE_UNAVAILABLE("Service unavailable", HttpStatus.SERVICE_UNAVAILABLE),
 
-    // Genérico
-    INTERNAL_ERROR("Error interno del servidor", HttpStatus.INTERNAL_SERVER_ERROR);
+    // Generic
+    INTERNAL_ERROR("Internal server error", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String title;
     private final HttpStatus httpStatus;
@@ -65,7 +67,7 @@ public enum ErrorCode implements ProblemType {
     @Override
     public HttpStatus getHttpStatus() { return httpStatus; }
 
-    // Representante de cada status para los errores del framework
+    // Representative code of each status for framework errors
     private static final Map<Integer, ErrorCode> BY_STATUS = Stream.of(
                     MALFORMED_REQUEST,      // 400
                     UNAUTHORIZED,           // 401
@@ -84,11 +86,11 @@ public enum ErrorCode implements ProblemType {
                     e -> e.getHttpStatus().value(), Function.identity()));
 
     /**
-     * Código que representa a un status HTTP. Vacío si el status no tiene
-     * representante en el catálogo (410, 402, 412, etc.).
+     * Code that represents an HTTP status. Empty when the status has no
+     * representative in the catalog (410, 402, 412, etc.).
      *
-     * @param status valor numérico del status HTTP
-     * @return el código del status, si existe
+     * @param status numeric value of the HTTP status
+     * @return the code of the status, if any
      */
     public static Optional<ErrorCode> forStatus(int status) {
         return Optional.ofNullable(BY_STATUS.get(status));

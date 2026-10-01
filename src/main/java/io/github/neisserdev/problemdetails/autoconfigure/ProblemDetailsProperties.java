@@ -1,15 +1,18 @@
 package io.github.neisserdev.problemdetails.autoconfigure;
 
+import java.util.Locale;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
 
 /**
- * Configuración del starter, bajo el prefijo {@code problem-details}.
+ * Starter configuration, under the {@code problem-details} prefix.
  *
  * <pre>
  * problem-details:
- *   base-type-url: https://api.ejemplo.com/problemas/
+ *   base-type-url: https://api.example.com/problems/
+ *   language: en
  *   security:
  *     enabled: true
  *     www-authenticate: Bearer
@@ -21,102 +24,145 @@ import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
 public class ProblemDetailsProperties {
 
     /**
-     * Base del "type" de cada problema, se le concatena el código del error.
-     * Admite rutas relativas o URLs absolutas.
+     * Base of the "type" of each problem, the error code is appended to it.
+     * Accepts relative paths or absolute URLs.
      */
     private String baseTypeUrl = ProblemDetailsFactory.DEFAULT_BASE_TYPE;
+
+    /**
+     * Language of the default titles and details. The application MessageSource
+     * translations take precedence.
+     */
+    private Language language = Language.EN;
 
     private final Security security = new Security();
 
     private final TraceId traceId = new TraceId();
 
     /**
-     * @return la base del {@code type}
+     * @return the base of the {@code type}
      */
     public String getBaseTypeUrl() {
         return baseTypeUrl;
     }
 
     /**
-     * @param baseTypeUrl la base del {@code type}
+     * @param baseTypeUrl the base of the {@code type}
      */
     public void setBaseTypeUrl(String baseTypeUrl) {
         this.baseTypeUrl = baseTypeUrl;
     }
 
     /**
-     * @return la configuración de la integración con Spring Security
+     * @return the language of the default texts
+     */
+    public Language getLanguage() {
+        return language;
+    }
+
+    /**
+     * @param language the language of the default texts
+     */
+    public void setLanguage(Language language) {
+        this.language = language;
+    }
+
+    /**
+     * @return the Spring Security integration settings
      */
     public Security getSecurity() {
         return security;
     }
 
     /**
-     * @return la configuración del traceId
+     * @return the traceId settings
      */
     public TraceId getTraceId() {
         return traceId;
     }
 
-    /** Identificador de traza en las respuestas. */
+    /** Languages of the bundled texts. */
+    public enum Language {
+
+        /** English. */
+        EN(Locale.ENGLISH),
+
+        /** Spanish. */
+        ES(Locale.forLanguageTag("es"));
+
+        private final Locale locale;
+
+        Language(Locale locale) {
+            this.locale = locale;
+        }
+
+        /**
+         * @return the locale of the language
+         */
+        public Locale getLocale() {
+            return locale;
+        }
+    }
+
+    /** Trace identifier in the responses. */
     public static class TraceId {
 
         /**
-         * Incluye el traceId de la petición cuando hay trazas activas.
+         * Include the traceId of the request when there is an active trace.
          */
         private boolean enabled = true;
 
         /**
-         * @return si se incluye el traceId
+         * @return whether the traceId is included
          */
         public boolean isEnabled() {
             return enabled;
         }
 
         /**
-         * @param enabled si se incluye el traceId
+         * @param enabled whether the traceId is included
          */
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
         }
     }
 
-    /** Integración con Spring Security. */
+    /** Spring Security integration. */
     public static class Security {
 
         /**
-         * Registra el entry point 401 y el manejador 403 en la cadena de filtros.
+         * Register the 401 entry point and the 403 handler in the filter chain.
          */
         private boolean enabled = true;
 
         /**
-         * Valor de WWW-Authenticate en las respuestas 401. Vacío para omitirla.
+         * Value of WWW-Authenticate in 401 responses. Empty to omit it.
          */
         private String wwwAuthenticate = "Bearer";
 
         /**
-         * @return si la integración está activa
+         * @return whether the integration is active
          */
         public boolean isEnabled() {
             return enabled;
         }
 
         /**
-         * @param enabled si la integración está activa
+         * @param enabled whether the integration is active
          */
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
         }
 
         /**
-         * @return el valor de {@code WWW-Authenticate}
+         * @return the value of {@code WWW-Authenticate}
          */
         public String getWwwAuthenticate() {
             return wwwAuthenticate;
         }
 
         /**
-         * @param wwwAuthenticate el valor de {@code WWW-Authenticate}
+         * @param wwwAuthenticate the value of {@code WWW-Authenticate}
          */
         public void setWwwAuthenticate(String wwwAuthenticate) {
             this.wwwAuthenticate = wwwAuthenticate;

@@ -1,16 +1,16 @@
 package io.github.neisserdev.problemdetails;
 
 /**
- * Proporciona el identificador de la traza de la petición en curso.
+ * Provides the trace identifier of the current request.
  *
- * <p>Con Micrometer Tracing en el classpath se registra uno automáticamente.
- * Un bean propio de este tipo lo sustituye.
+ * <p>One is registered automatically when Micrometer Tracing is on the
+ * classpath. A custom bean of this type replaces it.
  */
 @FunctionalInterface
 public interface TraceIdProvider {
 
     /**
-     * @return el traceId actual, o {@code null} si no hay traza
+     * @return the current traceId, or {@code null} when there is no trace
      */
     String currentTraceId();
 }

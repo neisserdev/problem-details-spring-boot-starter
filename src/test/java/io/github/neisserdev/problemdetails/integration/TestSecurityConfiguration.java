@@ -1,20 +1,20 @@
-package io.github.neisserdev.problemdetails.integracion;
+package io.github.neisserdev.problemdetails.integration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
-// Sin exceptionHandling(), el starter lo configura solo
+// No exceptionHandling(), the starter configures it
 @Configuration(proxyBeanMethods = false)
-class SeguridadDePrueba {
+class TestSecurityConfiguration {
 
     @Bean
-    SecurityFilterChain cadenaDePrueba(HttpSecurity http) throws Exception {
+    SecurityFilterChain testSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(peticiones -> peticiones
-                        .requestMatchers("/publico/**").permitAll()
+                .authorizeHttpRequests(requests -> requests
+                        .requestMatchers("/public/**").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .build();

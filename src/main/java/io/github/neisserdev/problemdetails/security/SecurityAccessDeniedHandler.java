@@ -13,16 +13,16 @@ import io.github.neisserdev.problemdetails.ErrorCode;
 import io.github.neisserdev.problemdetails.ProblemJsonWriter;
 
 /**
- * Responde 403 cuando un usuario autenticado no tiene permisos. También recibe
- * las {@code AccessDeniedException} de controladores y servicios, que el
- * {@code GlobalExceptionHandler} devuelve a Spring Security.
+ * Responds 403 when an authenticated user lacks permissions. It also receives
+ * the {@code AccessDeniedException} of controllers and services, which
+ * {@code GlobalExceptionHandler} hands back to Spring Security.
  */
 public class SecurityAccessDeniedHandler implements AccessDeniedHandler {
 
     private final ProblemJsonWriter writer;
 
     /**
-     * @param writer escritor de problem+json
+     * @param writer problem+json writer
      */
     public SecurityAccessDeniedHandler(ProblemJsonWriter writer) {
         this.writer = Objects.requireNonNull(writer, "writer");
@@ -34,6 +34,6 @@ public class SecurityAccessDeniedHandler implements AccessDeniedHandler {
         writer.write(response, request,
                 ErrorCode.ACCESS_DENIED,
                 writer.getFactory().detail(ErrorCode.ACCESS_DENIED,
-                        "No tienes permisos suficientes para acceder a este recurso"));
+                        "You do not have permission to access this resource"));
     }
 }

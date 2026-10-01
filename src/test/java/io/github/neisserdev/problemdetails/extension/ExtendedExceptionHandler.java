@@ -12,18 +12,18 @@ import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
 import io.github.neisserdev.problemdetails.autoconfigure.ProblemDetailsProperties;
 
 @RestControllerAdvice
-class ManejadorExtendido extends GlobalExceptionHandler {
+class ExtendedExceptionHandler extends GlobalExceptionHandler {
 
-    ManejadorExtendido(ProblemDetailsFactory factory, ProblemDetailsProperties properties) {
+    ExtendedExceptionHandler(ProblemDetailsFactory factory, ProblemDetailsProperties properties) {
         super(factory, properties.getSecurity().isEnabled());
     }
 
-    @ExceptionHandler(ArticuloRetiradoException.class)
-    ProblemDetail articuloRetirado(ArticuloRetiradoException ex, HttpServletRequest request) {
-        return getFactory().create(ErrorCode.RESOURCE_NOT_FOUND, "El articulo se retiro", request.getRequestURI());
+    @ExceptionHandler(ItemRetiredException.class)
+    ProblemDetail itemRetired(ItemRetiredException ex, HttpServletRequest request) {
+        return getFactory().create(ErrorCode.RESOURCE_NOT_FOUND, "The item was retired", request.getRequestURI());
     }
 
-    static class ArticuloRetiradoException extends RuntimeException {
+    static class ItemRetiredException extends RuntimeException {
         private static final long serialVersionUID = 1L;
     }
 }

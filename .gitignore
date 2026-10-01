@@ -11,5 +11,5 @@ target/
 .settings/
 .factorypath
 
-# Sistema
+# OS
 .DS_Store

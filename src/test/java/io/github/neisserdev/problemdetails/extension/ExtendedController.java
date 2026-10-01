@@ -9,20 +9,20 @@ import io.github.neisserdev.problemdetails.ResourceNotFoundException;
 
 @RestController
 @RequestMapping("/extension")
-class ControladorExtendido {
+class ExtendedController {
 
-    @GetMapping("/articulos/{id}")
-    String articulo(@PathVariable("id") long id) {
-        throw new ResourceNotFoundException("Articulo", id);
+    @GetMapping("/items/{id}")
+    String item(@PathVariable("id") long id) {
+        throw new ResourceNotFoundException("Item", id);
     }
 
-    @GetMapping("/retirado")
-    String retirado() {
-        throw new ManejadorExtendido.ArticuloRetiradoException();
+    @GetMapping("/retired")
+    String retired() {
+        throw new ExtendedExceptionHandler.ItemRetiredException();
     }
 
-    @GetMapping("/fallo")
-    String fallo() {
-        throw new IllegalStateException("fallo inesperado");
+    @GetMapping("/failure")
+    String failure() {
+        throw new IllegalStateException("unexpected failure");
     }
 }

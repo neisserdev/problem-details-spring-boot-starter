@@ -16,14 +16,14 @@ import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
 import io.github.neisserdev.problemdetails.TraceIdProvider;
 
 /**
- * Autoconfiguración para aplicaciones Spring MVC.
+ * Auto-configuration for Spring MVC applications.
  *
- * <p>Registra {@link ProblemDetailsFactory} y {@link GlobalExceptionHandler} si
- * la aplicación no define los suyos. {@code ProblemJsonWriter} y los componentes
- * de seguridad se registran desde {@link ProblemDetailsConfigurations}.
+ * <p>Registers {@link ProblemDetailsFactory} and {@link GlobalExceptionHandler}
+ * when the application does not define its own. {@code ProblemJsonWriter} and
+ * the security components are registered from {@link ProblemDetailsConfigurations}.
  *
- * <p>Se ejecuta después de Jackson y antes de Spring MVC, de modo que el
- * manejador de Problem Details de Spring Boot no se registra.
+ * <p>It runs after Jackson and before Spring MVC, so the Spring Boot Problem
+ * Details handler is not registered.
  */
 @AutoConfiguration(
         afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration",
@@ -41,13 +41,14 @@ public final class ProblemDetailsAutoConfiguration {
     ProblemDetailsAutoConfiguration() {
     }
 
-    // El contexto delega en el MessageSource de la aplicación
+    // The context delegates to the application MessageSource
     @Bean
     @ConditionalOnMissingBean
     ProblemDetailsFactory problemDetailsFactory(ProblemDetailsProperties properties, ApplicationContext context,
                                                 ObjectProvider<TraceIdProvider> traceIdProviders) {
         TraceIdProvider provider = properties.getTraceId().isEnabled() ? traceIdProviders.getIfAvailable() : null;
-        return new ProblemDetailsFactory(properties.getBaseTypeUrl(), context, provider);
+        return new ProblemDetailsFactory(properties.getBaseTypeUrl(), context, provider,
+                properties.getLanguage().getLocale());
     }
 
     @Bean

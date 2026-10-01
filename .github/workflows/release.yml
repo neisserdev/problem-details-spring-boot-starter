@@ -13,29 +13,29 @@ concurrency:
 
 jobs:
   version:
-    name: Comprobar versión
+    name: Check version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.pom.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: pom
-        name: Comparar tag y pom
+        name: Compare tag and pom
         run: |
           version=$(python3 -c "import xml.etree.ElementTree as ET; print(ET.parse('pom.xml').getroot().findtext('{http://maven.apache.org/POM/4.0.0}version'))")
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::El tag $GITHUB_REF_NAME no coincide con la versión del pom ($version)"
+            echo "::error::Tag $GITHUB_REF_NAME does not match the pom version ($version)"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  pruebas:
+  tests:
     needs: version
     uses: ./.github/workflows/ci.yml
 
-  publicar:
-    name: Publicar en Maven Central
-    needs: [version, pruebas]
+  publish:
+    name: Publish to Maven Central
+    needs: [version, tests]
     runs-on: ubuntu-latest
     timeout-minutes: 75
     environment: maven-central
@@ -56,8 +56,8 @@ jobs:
           server-username-env-var: MAVEN_CENTRAL_USERNAME
           server-password-env-var: MAVEN_CENTRAL_PASSWORD
 
-      # Los tests ya pasaron en el job anterior
-      - name: Firmar y publicar
+      # Tests already passed in the previous job
+      - name: Sign and publish
         run: >-
           mvn -B -ntp clean deploy -Prelease -DskipTests
           -Dgpg.signer=bc -Dgpg.bestPractices=true
@@ -68,20 +68,20 @@ jobs:
           MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-      # Notas con los commits desde el tag anterior
-      - name: Crear release en GitHub
+      # Notes with the commits since the previous tag
+      - name: Create GitHub release
         run: |
-          anterior=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
-          if [ -n "$anterior" ]; then rango="$anterior..$GITHUB_REF_NAME"; else rango="$GITHUB_REF_NAME"; fi
-          git log --no-merges --pretty='- %s' "$rango" > notas.md
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notas.md \
+          previous=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then range="$previous..$GITHUB_REF_NAME"; else range="$GITHUB_REF_NAME"; fi
+          git log --no-merges --pretty='- %s' "$range" > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md \
             target/problem-details-spring-boot-starter-"$VERSION"*.jar
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Resumen
+      - name: Summary
         run: |
           {
             echo "### io.github.neisserdev:problem-details-spring-boot-starter:$VERSION"
-            echo "Publicado en Maven Central."
+            echo "Published to Maven Central."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -18,8 +18,12 @@ import org.springframework.http.ProblemDetail;
 
 class ProblemDetailsFactoryTest {
 
-    enum ErroresDePrueba implements ProblemType {
-        STOCK_INSUFICIENTE;
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
+
+    private static final Locale SPANISH = Locale.forLanguageTag("es");
+
+    enum TestErrors implements ProblemType {
+        INSUFFICIENT_STOCK;
 
         @Override
         public String getCode() {
@@ -28,7 +32,7 @@ class ProblemDetailsFactoryTest {
 
         @Override
         public String getTitle() {
-            return "Stock insuficiente";
+            return "Insufficient stock";
         }
 
         @Override
@@ -38,105 +42,105 @@ class ProblemDetailsFactoryTest {
     }
 
     @AfterEach
-    void restaurarIdioma() {
+    void resetLocale() {
         LocaleContextHolder.resetLocaleContext();
     }
 
     @Test
-    void usaLaBasePorDefecto() {
+    void usesTheDefaultBase() {
         assertThat(new ProblemDetailsFactory().typeOf(ErrorCode.RESOURCE_NOT_FOUND))
                 .isEqualTo(URI.create("/problems/RESOURCE_NOT_FOUND"));
     }
 
     @Test
-    void anadeLaBarraFinalSiFalta() {
-        assertThat(new ProblemDetailsFactory(" https://api.ejemplo.com/problemas ").getBaseType())
-                .isEqualTo("https://api.ejemplo.com/problemas/");
+    void appendsTheTrailingSlashWhenMissing() {
+        assertThat(new ProblemDetailsFactory(" https://api.example.com/problems ").getBaseType())
+                .isEqualTo("https://api.example.com/problems/");
     }
 
     @Test
-    void respetaLasBasesQueYaTerminanEnSeparador() {
-        assertThat(new ProblemDetailsFactory("urn:problema:").getBaseType()).isEqualTo("urn:problema:");
-        assertThat(new ProblemDetailsFactory("https://docs.ejemplo.com/errores#").getBaseType())
-                .isEqualTo("https://docs.ejemplo.com/errores#");
+    void keepsBasesThatAlreadyEndWithASeparator() {
+        assertThat(new ProblemDetailsFactory("urn:problem:").getBaseType()).isEqualTo("urn:problem:");
+        assertThat(new ProblemDetailsFactory("https://docs.example.com/errors#").getBaseType())
+                .isEqualTo("https://docs.example.com/errors#");
     }
 
     @Test
-    void rechazaBasesVaciasOQueNoFormanUnUri() {
+    void rejectsEmptyBasesAndInvalidUris() {
         assertThatIllegalArgumentException().isThrownBy(() -> new ProblemDetailsFactory((String) null));
         assertThatIllegalArgumentException().isThrownBy(() -> new ProblemDetailsFactory("  "));
-        assertThatIllegalArgumentException().isThrownBy(() -> new ProblemDetailsFactory("https://api ejemplo.com/"));
+        assertThatIllegalArgumentException().isThrownBy(() -> new ProblemDetailsFactory("https://api example.com/"));
     }
 
     @Test
-    void creaElProblemaConLaFormaDeLaCasa() {
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory("https://api.ejemplo.com/problemas/");
+    void createsTheProblemWithTheExpectedShape() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("https://api.example.com/problems/");
 
-        ProblemDetail pd = fabrica.create(ErrorCode.RESOURCE_NOT_FOUND, "Pedido con id 7 no encontrado",
-                "/pedidos/7", Map.of("resource", "Pedido", "code", "PISADO", "timestamp", "ayer"));
+        ProblemDetail pd = factory.create(ErrorCode.RESOURCE_NOT_FOUND, "Order 7 was not found",
+                "/orders/7", Map.of("resource", "Order", "code", "OVERRIDDEN", "timestamp", "yesterday"));
 
         assertThat(pd.getStatus()).isEqualTo(404);
-        assertThat(pd.getType()).isEqualTo(URI.create("https://api.ejemplo.com/problemas/RESOURCE_NOT_FOUND"));
-        assertThat(pd.getTitle()).isEqualTo("Recurso no encontrado");
-        assertThat(pd.getDetail()).isEqualTo("Pedido con id 7 no encontrado");
-        assertThat(pd.getInstance()).isEqualTo(URI.create("/pedidos/7"));
+        assertThat(pd.getType()).isEqualTo(URI.create("https://api.example.com/problems/RESOURCE_NOT_FOUND"));
+        assertThat(pd.getTitle()).isEqualTo("Resource not found");
+        assertThat(pd.getDetail()).isEqualTo("Order 7 was not found");
+        assertThat(pd.getInstance()).isEqualTo(URI.create("/orders/7"));
         assertThat(pd.getProperties())
                 .containsEntry("code", "RESOURCE_NOT_FOUND")
-                .containsEntry("resource", "Pedido")
+                .containsEntry("resource", "Order")
                 .containsKey("timestamp");
-        assertThat(pd.getProperties().get("timestamp")).isNotEqualTo("ayer");
+        assertThat(pd.getProperties().get("timestamp")).isNotEqualTo("yesterday");
     }
 
     @Test
-    void creaElProblemaDesdeUnaExcepcionDeNegocio() {
-        ProblemDetail pd = new ProblemDetailsFactory().create(new ResourceNotFoundException("Pedido", 7), "/pedidos/7");
+    void createsTheProblemFromABusinessException() {
+        ProblemDetail pd = new ProblemDetailsFactory().create(new ResourceNotFoundException("Order", 7), "/orders/7");
 
-        assertThat(pd.getDetail()).isEqualTo("Pedido con id 7 no encontrado");
+        assertThat(pd.getDetail()).isEqualTo("Order with id 7 not found");
         assertThat(pd.getProperties())
-                .containsEntry("resource", "Pedido")
+                .containsEntry("resource", "Order")
                 .containsEntry("resourceId", "7");
     }
 
     @Test
-    void aceptaTiposDeProblemaPropios() {
+    void acceptsCustomProblemTypes() {
         ProblemDetail pd = new ProblemDetailsFactory()
-                .create(ErroresDePrueba.STOCK_INSUFICIENTE, "Quedan 3 unidades", "/pedidos");
+                .create(TestErrors.INSUFFICIENT_STOCK, "Only 3 units left", "/orders");
 
         assertThat(pd.getStatus()).isEqualTo(409);
-        assertThat(pd.getType()).hasToString("/problems/STOCK_INSUFICIENTE");
-        assertThat(pd.getTitle()).isEqualTo("Stock insuficiente");
-        assertThat(pd.getProperties()).containsEntry("code", "STOCK_INSUFICIENTE");
+        assertThat(pd.getType()).hasToString("/problems/INSUFFICIENT_STOCK");
+        assertThat(pd.getTitle()).isEqualTo("Insufficient stock");
+        assertThat(pd.getProperties()).containsEntry("code", "INSUFFICIENT_STOCK");
     }
 
     @Test
-    void omiteElInstanceSiLaRutaNoEsUnUriValido() {
-        ProblemDetail pd = new ProblemDetailsFactory().create(ErrorCode.MALFORMED_REQUEST, "x", "/ruta con espacios");
+    void omitsTheInstanceWhenThePathIsNotAValidUri() {
+        ProblemDetail pd = new ProblemDetailsFactory().create(ErrorCode.MALFORMED_REQUEST, "x", "/path with spaces");
 
         assertThat(pd.getInstance()).isNull();
     }
 
     @Test
-    void rechazaCodigosQueNoCabenEnUnUri() {
-        assertThatIllegalStateException().isThrownBy(() -> new ProblemDetailsFactory().typeOf("CODIGO CON ESPACIOS"));
+    void rejectsCodesThatDoNotFitInAUri() {
+        assertThatIllegalStateException().isThrownBy(() -> new ProblemDetailsFactory().typeOf("CODE WITH SPACES"));
     }
 
     @Test
-    void completaLosProblemasDelFrameworkConSuCodigoCanonico() {
+    void completesFrameworkProblemsWithTheirCanonicalCode() {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.METHOD_NOT_ALLOWED);
 
-        new ProblemDetailsFactory().complete(pd, 405, "/pedidos/1");
+        new ProblemDetailsFactory().complete(pd, 405, "/orders/1");
 
         assertThat(pd.getProperties()).containsEntry("code", "METHOD_NOT_ALLOWED").containsKey("timestamp");
         assertThat(pd.getType()).hasToString("/problems/METHOD_NOT_ALLOWED");
-        assertThat(pd.getTitle()).isEqualTo("Método HTTP no permitido");
-        assertThat(pd.getInstance()).hasToString("/pedidos/1");
+        assertThat(pd.getTitle()).isEqualTo("Method not allowed");
+        assertThat(pd.getInstance()).hasToString("/orders/1");
     }
 
     @Test
-    void derivaElCodigoDeLosStatusSinRepresentante() {
+    void derivesTheCodeOfStatusesWithoutACanonicalCode() {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.GONE);
 
-        new ProblemDetailsFactory().complete(pd, 410, "/recurso");
+        new ProblemDetailsFactory().complete(pd, 410, "/resource");
 
         assertThat(pd.getProperties()).containsEntry("code", "GONE");
         assertThat(pd.getType()).hasToString("/problems/GONE");
@@ -144,8 +148,8 @@ class ProblemDetailsFactoryTest {
     }
 
     @Test
-    void nuncaDerivaCodigosDeConstantesDeprecadasDeSpring() {
-        // Constantes deprecadas en Spring 7
+    void neverDerivesCodesFromDeprecatedSpringConstants() {
+        // Deprecated in Spring 7
         assertThat(ProblemDetailsFactory.genericCodeOf(413)).isEqualTo("CONTENT_TOO_LARGE");
         assertThat(ProblemDetailsFactory.genericCodeOf(422)).isEqualTo("UNPROCESSABLE_CONTENT");
         assertThat(ProblemDetailsFactory.genericCodeOf(418)).isEqualTo("HTTP_418");
@@ -153,97 +157,180 @@ class ProblemDetailsFactoryTest {
     }
 
     @Test
-    void noPisaUnProblemaQueYaTieneCodigo() {
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory();
-        ProblemDetail pd = fabrica.create(ErrorCode.VALIDATION_ERROR, "x", "/a");
+    void doesNotOverrideAProblemThatAlreadyHasACode() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory();
+        ProblemDetail pd = factory.create(ErrorCode.VALIDATION_ERROR, "x", "/a");
 
-        fabrica.complete(pd, 400, "/b");
+        factory.complete(pd, 400, "/b");
 
         assertThat(pd.getProperties()).containsEntry("code", "VALIDATION_ERROR");
-        assertThat(pd.getTitle()).isEqualTo("Error de validación");
+        assertThat(pd.getTitle()).isEqualTo("Validation error");
         assertThat(pd.getInstance()).hasToString("/a");
     }
 
     @Test
-    void traduceTitulosYDetallesConElMessageSource() {
-        StaticMessageSource mensajes = new StaticMessageSource();
-        mensajes.addMessage("problemDetails.title.RESOURCE_NOT_FOUND", Locale.ENGLISH, "Resource not found");
-        mensajes.addMessage("problemDetails.detail.INTERNAL_ERROR", Locale.ENGLISH, "Internal error");
-        mensajes.addMessage("problemDetails.detail.TYPE_MISMATCH.parameter", Locale.ENGLISH,
-                "Parameter ''{0}'' must be of type {1}");
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory("/problems/", mensajes);
+    void translatesTitlesAndDetailsWithTheMessageSource() {
+        StaticMessageSource messages = new StaticMessageSource();
+        messages.addMessage("problemDetails.title.RESOURCE_NOT_FOUND", Locale.ENGLISH, "Nothing here");
+        messages.addMessage("problemDetails.detail.INTERNAL_ERROR", Locale.ENGLISH, "Something broke");
+        messages.addMessage("problemDetails.detail.TYPE_MISMATCH.parameter", Locale.ENGLISH,
+                "Param ''{0}'' must be {1}");
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", messages);
         LocaleContextHolder.setLocale(Locale.ENGLISH);
 
-        assertThat(fabrica.create(ErrorCode.RESOURCE_NOT_FOUND, "x", "/a").getTitle()).isEqualTo("Resource not found");
-        assertThat(fabrica.detail(ErrorCode.INTERNAL_ERROR, "Ha ocurrido un error interno")).isEqualTo("Internal error");
-        assertThat(fabrica.message("problemDetails.detail.TYPE_MISMATCH.parameter",
-                "El parámetro ''{0}'' debe ser de tipo {1}", "n", "int"))
+        assertThat(factory.create(ErrorCode.RESOURCE_NOT_FOUND, "x", "/a").getTitle()).isEqualTo("Nothing here");
+        assertThat(factory.detail(ErrorCode.INTERNAL_ERROR, "Default detail")).isEqualTo("Something broke");
+        assertThat(factory.message("problemDetails.detail.TYPE_MISMATCH.parameter",
+                "Default text {0} {1}", "n", "int"))
+                .isEqualTo("Param 'n' must be int");
+    }
+
+    @Test
+    void translatesTheTitleOfFrameworkProblems() {
+        StaticMessageSource messages = new StaticMessageSource();
+        messages.addMessage("problemDetails.title.METHOD_NOT_ALLOWED", Locale.ENGLISH, "Wrong method");
+        messages.addMessage("problemDetails.title.GONE", Locale.ENGLISH, "No longer available");
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", messages);
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+
+        ProblemDetail methodNotAllowed = ProblemDetail.forStatus(HttpStatus.METHOD_NOT_ALLOWED);
+        factory.complete(methodNotAllowed, 405, "/a");
+        ProblemDetail gone = ProblemDetail.forStatus(HttpStatus.GONE);
+        factory.complete(gone, 410, "/b");
+
+        assertThat(methodNotAllowed.getTitle()).isEqualTo("Wrong method");
+        assertThat(gone.getTitle()).isEqualTo("No longer available");
+    }
+
+    @Test
+    void usesTheBundledTextsWithoutAnApplicationTranslation() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", new StaticMessageSource());
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+
+        assertThat(factory.title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Resource not found");
+        assertThat(factory.detail(ErrorCode.INTERNAL_ERROR, "Fallback")).isEqualTo("An internal error occurred");
+        assertThat(factory.message("missing.key", "Parameter ''{0}'' must be of type {1}", "n", "int"))
                 .isEqualTo("Parameter 'n' must be of type int");
     }
 
     @Test
-    void traduceElTituloDeLosProblemasDelFramework() {
-        StaticMessageSource mensajes = new StaticMessageSource();
-        mensajes.addMessage("problemDetails.title.METHOD_NOT_ALLOWED", Locale.ENGLISH, "Method not allowed");
-        mensajes.addMessage("problemDetails.title.GONE", Locale.ENGLISH, "No longer available");
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory("/problems/", mensajes);
+    void usesTheConfiguredLanguageForTheBundledTexts() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", null, null, SPANISH);
+
+        assertThat(factory.getLanguage()).isEqualTo(SPANISH);
+        assertThat(factory.title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Recurso no encontrado");
+        assertThat(factory.detail(ErrorCode.INTERNAL_ERROR, "Fallback")).isEqualTo("Ha ocurrido un error interno");
+        assertThat(factory.message("problemDetails.detail.TYPE_MISMATCH.parameter", "Fallback", "n", "int"))
+                .isEqualTo("El parámetro 'n' debe ser de tipo int");
+        assertThat(factory.create(new ResourceNotFoundException("Pedido", 7), "/a").getDetail())
+                .isEqualTo("Pedido con id 7 no encontrado");
+
+        ProblemDetail gone = ProblemDetail.forStatus(HttpStatus.GONE);
+        factory.complete(gone, 410, "/a");
+        assertThat(gone.getTitle()).isEqualTo("Recurso ya no disponible");
+    }
+
+    @Test
+    void applicationTranslationsTakePrecedenceOverTheLanguage() {
+        StaticMessageSource messages = new StaticMessageSource();
+        messages.addMessage("problemDetails.title.RESOURCE_NOT_FOUND", Locale.ENGLISH, "Nothing here");
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", messages, null, SPANISH);
+
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+        assertThat(factory.title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Nothing here");
+
+        LocaleContextHolder.setLocale(Locale.FRENCH);
+        assertThat(factory.title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Recurso no encontrado");
+    }
+
+    @Test
+    void languagesWithoutBundledTextsFallBackToEnglish() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", null, null, Locale.GERMAN);
+
+        assertThat(factory.title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Resource not found");
+        assertThat(new ProblemDetailsFactory("/problems/", null, null, null).getLanguage()).isEqualTo(Locale.ENGLISH);
+    }
+
+    @Test
+    void doesNotGroupTheDigitsOfNumericIds() {
+        ResourceNotFoundException ex = new ResourceNotFoundException("Order", 1234567L);
+
+        assertThat(new ProblemDetailsFactory().create(ex, "/a").getDetail())
+                .isEqualTo("Order with id 1234567 not found");
+        assertThat(new ProblemDetailsFactory("/problems/", null, null, SPANISH).create(ex, "/a").getDetail())
+                .isEqualTo("Order con id 1234567 no encontrado");
+    }
+
+    @Test
+    void businessExceptionsCanTranslateTheirDetail() {
+        StaticMessageSource messages = new StaticMessageSource();
+        messages.addMessage("store.insufficientStock", Locale.ENGLISH, "Only {0} left");
         LocaleContextHolder.setLocale(Locale.ENGLISH);
 
-        ProblemDetail metodo = ProblemDetail.forStatus(HttpStatus.METHOD_NOT_ALLOWED);
-        fabrica.complete(metodo, 405, "/a");
-        ProblemDetail retirado = ProblemDetail.forStatus(HttpStatus.GONE);
-        fabrica.complete(retirado, 410, "/b");
+        ProblemDetail translated = new ProblemDetailsFactory("/problems/", messages)
+                .create(new InsufficientStockException(3), "/orders");
+        ProblemDetail untranslated = new ProblemDetailsFactory()
+                .create(new InsufficientStockException(3), "/orders");
 
-        assertThat(metodo.getTitle()).isEqualTo("Method not allowed");
-        assertThat(retirado.getTitle()).isEqualTo("No longer available");
+        assertThat(translated.getDetail()).isEqualTo("Only 3 left");
+        assertThat(untranslated.getDetail()).isEqualTo("Can't sell, only 3 left");
+    }
+
+    static class InsufficientStockException extends BusinessException {
+
+        private static final long serialVersionUID = 1L;
+
+        private final int available;
+
+        InsufficientStockException(int available) {
+            super(TestErrors.INSUFFICIENT_STOCK, "Can't sell, only " + available + " left");
+            this.available = available;
+        }
+
+        @Override
+        public String getDetailMessageCode() {
+            return "store.insufficientStock";
+        }
+
+        @Override
+        public Object[] getDetailMessageArguments() {
+            return new Object[] {available};
+        }
     }
 
     @Test
-    void usaElTextoPorDefectoSiNoHayTraduccion() {
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory("/problems/", new StaticMessageSource());
-        LocaleContextHolder.setLocale(Locale.ENGLISH);
+    void formatsArgumentsWithoutAMessageSource() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory();
 
-        assertThat(fabrica.title(ErrorCode.RESOURCE_NOT_FOUND)).isEqualTo("Recurso no encontrado");
-        assertThat(fabrica.detail(ErrorCode.INTERNAL_ERROR, "Ha ocurrido un error interno"))
-                .isEqualTo("Ha ocurrido un error interno");
-        assertThat(fabrica.message("clave.inexistente", "El parámetro ''{0}'' debe ser de tipo {1}", "n", "int"))
-                .isEqualTo("El parámetro 'n' debe ser de tipo int");
+        assertThat(factory.message("key", "Parameter ''{0}'' must be of type {1}", "n", "int"))
+                .isEqualTo("Parameter 'n' must be of type int");
+        assertThat(factory.message("key", "Without arguments the 'quotes' stay as they are"))
+                .isEqualTo("Without arguments the 'quotes' stay as they are");
     }
 
     @Test
-    void formateaLosArgumentosSinMessageSource() {
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory();
+    void includesTheTraceIdWhenThereIsATrace() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", null, () -> TRACE_ID);
 
-        assertThat(fabrica.message("clave", "El parámetro ''{0}'' debe ser de tipo {1}", "n", "int"))
-                .isEqualTo("El parámetro 'n' debe ser de tipo int");
-        assertThat(fabrica.message("clave", "Sin argumentos, las comillas 'quedan' igual"))
-                .isEqualTo("Sin argumentos, las comillas 'quedan' igual");
+        ProblemDetail created = factory.create(ErrorCode.RESOURCE_NOT_FOUND, "x", "/a");
+        ProblemDetail completed = ProblemDetail.forStatus(HttpStatus.METHOD_NOT_ALLOWED);
+        factory.complete(completed, 405, "/b");
+
+        assertThat(created.getProperties()).containsEntry("traceId", TRACE_ID);
+        assertThat(completed.getProperties()).containsEntry("traceId", TRACE_ID);
     }
 
     @Test
-    void incluyeElTraceIdSiHayTraza() {
-        ProblemDetailsFactory fabrica = new ProblemDetailsFactory("/problems/", null,
-                () -> "4bf92f3577b34da6a3ce929d0e0e4736");
-
-        ProblemDetail creado = fabrica.create(ErrorCode.RESOURCE_NOT_FOUND, "x", "/a");
-        ProblemDetail completado = ProblemDetail.forStatus(HttpStatus.METHOD_NOT_ALLOWED);
-        fabrica.complete(completado, 405, "/b");
-
-        assertThat(creado.getProperties()).containsEntry("traceId", "4bf92f3577b34da6a3ce929d0e0e4736");
-        assertThat(completado.getProperties()).containsEntry("traceId", "4bf92f3577b34da6a3ce929d0e0e4736");
-    }
-
-    @Test
-    void omiteElTraceIdSiNoHayTrazaOElProveedorFalla() {
-        assertThat(sinTraza(new ProblemDetailsFactory())).isTrue();
-        assertThat(sinTraza(new ProblemDetailsFactory("/problems/", null, () -> null))).isTrue();
-        assertThat(sinTraza(new ProblemDetailsFactory("/problems/", null, () -> ""))).isTrue();
-        assertThat(sinTraza(new ProblemDetailsFactory("/problems/", null, () -> {
-            throw new IllegalStateException("sin traza");
+    void omitsTheTraceIdWhenThereIsNoTraceOrTheProviderFails() {
+        assertThat(hasNoTraceId(new ProblemDetailsFactory())).isTrue();
+        assertThat(hasNoTraceId(new ProblemDetailsFactory("/problems/", null, () -> null))).isTrue();
+        assertThat(hasNoTraceId(new ProblemDetailsFactory("/problems/", null, () -> ""))).isTrue();
+        assertThat(hasNoTraceId(new ProblemDetailsFactory("/problems/", null, () -> {
+            throw new IllegalStateException("no trace");
         }))).isTrue();
     }
 
-    private static boolean sinTraza(ProblemDetailsFactory fabrica) {
-        return !fabrica.create(ErrorCode.INTERNAL_ERROR, "x", "/a").getProperties().containsKey("traceId");
+    private static boolean hasNoTraceId(ProblemDetailsFactory factory) {
+        return !factory.create(ErrorCode.INTERNAL_ERROR, "x", "/a").getProperties().containsKey("traceId");
     }
 }

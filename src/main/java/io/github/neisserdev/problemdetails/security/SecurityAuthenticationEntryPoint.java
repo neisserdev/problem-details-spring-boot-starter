@@ -15,10 +15,10 @@ import io.github.neisserdev.problemdetails.ErrorCode;
 import io.github.neisserdev.problemdetails.ProblemJsonWriter;
 
 /**
- * Responde 401 cuando una petición sin autenticar accede a un recurso protegido.
+ * Responds 401 when an unauthenticated request accesses a protected resource.
  *
- * <p>Envía la cabecera {@code WWW-Authenticate} que exige RFC 9110. El valor por
- * defecto es {@code Bearer} y se cambia con
+ * <p>Sends the {@code WWW-Authenticate} header required by RFC 9110. The
+ * default value is {@code Bearer} and it is changed with
  * {@code problem-details.security.www-authenticate}.
  */
 public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoint {
@@ -27,8 +27,8 @@ public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoin
     private final String wwwAuthenticate;
 
     /**
-     * @param writer          escritor de problem+json
-     * @param wwwAuthenticate valor de {@code WWW-Authenticate}, vacío o {@code null} para omitirla
+     * @param writer          problem+json writer
+     * @param wwwAuthenticate value of {@code WWW-Authenticate}, empty or {@code null} to omit it
      */
     public SecurityAuthenticationEntryPoint(ProblemJsonWriter writer, String wwwAuthenticate) {
         this.writer = Objects.requireNonNull(writer, "writer");
@@ -41,7 +41,7 @@ public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoin
         writer.write(response, request,
                 ErrorCode.UNAUTHORIZED,
                 writer.getFactory().detail(ErrorCode.UNAUTHORIZED,
-                        "Se requiere autenticación para acceder a este recurso"),
+                        "Authentication is required to access this resource"),
                 wwwAuthenticate != null ? HttpHeaders.WWW_AUTHENTICATE : null,
                 wwwAuthenticate);
     }

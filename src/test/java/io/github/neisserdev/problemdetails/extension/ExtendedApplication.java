@@ -5,15 +5,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
-// Aplicación que sustituye el manejador por una subclase propia
+// Application that replaces the handler with its own subclass
 @SpringBootApplication
-public class AplicacionExtendida {
+public class ExtendedApplication {
 
     @Bean
-    SecurityFilterChain cadenaExtendida(HttpSecurity http) throws Exception {
+    SecurityFilterChain extendedSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(peticiones -> peticiones.anyRequest().permitAll())
+                .authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
                 .build();
     }
 }

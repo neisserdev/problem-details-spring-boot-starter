@@ -25,18 +25,18 @@ import io.github.neisserdev.problemdetails.security.SecurityAuthenticationEntryP
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Configuraciones que dependen de Jackson 3, Spring Security y Micrometer Tracing,
- * separadas para que no se carguen si esas librerías no están en el classpath.
+ * Configurations that depend on Jackson 3, Spring Security and Micrometer Tracing,
+ * kept apart so they are not loaded when those libraries are not on the classpath.
  *
- * <p>El orden de {@code @Import} en {@link ProblemDetailsAutoConfiguration} es
- * importante, la de seguridad necesita el {@link ProblemJsonWriter}.
+ * <p>The order of {@code @Import} in {@link ProblemDetailsAutoConfiguration}
+ * matters, the security one needs the {@link ProblemJsonWriter}.
  */
 final class ProblemDetailsConfigurations {
 
     private ProblemDetailsConfigurations() {
     }
 
-    // Independiente de problem-details.security.enabled, lo usan también filtros propios
+    // Independent of problem-details.security.enabled, custom filters use it too
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(JsonMapper.class)
     static class JsonWriting {
@@ -49,7 +49,7 @@ final class ProblemDetailsConfigurations {
         }
     }
 
-    // Entry point 401 y manejador 403, se desactiva con problem-details.security.enabled=false
+    // 401 entry point and 403 handler, disabled with problem-details.security.enabled=false
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = {
             "org.springframework.security.web.AuthenticationEntryPoint",
@@ -72,8 +72,8 @@ final class ProblemDetailsConfigurations {
             return new SecurityAccessDeniedHandler(writer);
         }
 
-        // Spring Security 7 aplica este Customizer a cada HttpSecurity.
-        // Va primero para que un exceptionHandling(...) de la aplicación lo sobrescriba.
+        // Spring Security 7 applies this Customizer to every HttpSecurity.
+        // It goes first so an exceptionHandling(...) of the application overrides it.
         @Configuration(proxyBeanMethods = false)
         @ConditionalOnClass(name = "org.springframework.security.config.annotation.web.builders.HttpSecurity")
         static class AutoWiring {
@@ -89,7 +89,7 @@ final class ProblemDetailsConfigurations {
         }
     }
 
-    // El Tracer se resuelve en cada petición, puede no existir aunque la clase esté presente
+    // The Tracer is resolved on each request, it may be missing even when the class is present
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "io.micrometer.tracing.Tracer")
     @ConditionalOnBooleanProperty(name = "problem-details.trace-id.enabled", matchIfMissing = true)
