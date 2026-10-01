@@ -1,10 +1,14 @@
 # problem-details-spring-boot-starter
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neisserdev/problem-details-spring-boot-starter)](https://central.sonatype.com/artifact/io.github.neisserdev/problem-details-spring-boot-starter)
+[![CI](https://github.com/neisserdev/problem-details-spring-boot-starter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/neisserdev/problem-details-spring-boot-starter/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [🇪🇸 Español](README.es.md) | [🇬🇧 English](README.md)
 
 Standard RFC 9457 (Problem Details) error handling for Spring Boot 4 and Spring MVC. Once the dependency is added, every error response of the API shares the `application/problem+json` format, covering the domain layer, Spring MVC routing, validation and Spring Security.
 
-Requirements: Java 17 or later, Spring Boot 4 and a servlet environment (Spring MVC). WebFlux is not supported.
+Requirements: Java 17 or later, Spring Boot 4 and a servlet environment (Spring MVC). WebFlux is not supported. GraalVM native images are supported, the starter registers the runtime hints it needs.
 
 ## Installation
 
@@ -14,17 +18,17 @@ Requirements: Java 17 or later, Spring Boot 4 and a servlet environment (Spring 
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.0")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.1")
 ```
 
-The starter is lightweight and brings no transitive dependencies. It adapts to the dependencies already on the project classpath (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
+The starter only brings `spring-boot-autoconfigure`, `slf4j-api` and the Jakarta Validation API. Spring MVC, Jackson, Spring Security and Micrometer Tracing are optional and are used when the project already includes them (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
 
 ## Auto-configured Components
 
@@ -369,7 +373,7 @@ The same replacement pattern applies to every core component (`ProblemDetailsFac
 
 - Servlet environments (Spring MVC) only. It does not apply to WebFlux applications.
 - Exceptions not caught inside custom filters are delegated to the Spring Boot `BasicErrorController`. Catch them and use `ProblemJsonWriter`.
-- Built with Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). CI runs the tests with Spring Boot 4.0.8 and 4.1.1 on Java 17, 21 and 25.
+- Requires Spring Boot 4.0 or later (Spring Framework 7, Spring Security 7, Jackson 3). CI runs the tests with Spring Boot 4.0 and with the version of the pom, on Java 17, 21 and 25.
 
 ## License
 

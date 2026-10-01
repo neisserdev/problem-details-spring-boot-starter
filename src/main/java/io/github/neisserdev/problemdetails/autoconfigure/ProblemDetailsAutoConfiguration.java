@@ -9,6 +9,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import io.github.neisserdev.problemdetails.GlobalExceptionHandler;
@@ -31,6 +32,7 @@ import io.github.neisserdev.problemdetails.TraceIdProvider;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnClass(ResponseEntityExceptionHandler.class)
 @EnableConfigurationProperties(ProblemDetailsProperties.class)
+@ImportRuntimeHints(ProblemDetailsRuntimeHints.class)
 @Import({
         ProblemDetailsConfigurations.JsonWriting.class,
         ProblemDetailsConfigurations.SecurityFilters.class,

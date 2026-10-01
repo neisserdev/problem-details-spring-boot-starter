@@ -153,7 +153,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleGeneric(Exception ex, HttpServletRequest request) throws Exception {
         String uri = request.getRequestURI();
 
-        // BadCredentialsException of a login reaches the controller
+        // A login done in a controller throws it here
         if (securityEnabled && isInstanceOf(ex, BAD_CREDENTIALS)) {
             return factory.create(ErrorCode.INVALID_CREDENTIALS,
                     factory.detail(ErrorCode.INVALID_CREDENTIALS, "The credentials are not valid"), uri);
@@ -285,7 +285,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return handleExceptionInternal(ex, pd, headers, ErrorCode.TYPE_MISMATCH.getHttpStatus(), request);
     }
 
-    // Common exit of ResponseEntityExceptionHandler
+    // Common exit point of ResponseEntityExceptionHandler
 
     /**
      * Completes the ProblemDetail of every response with the missing fields.

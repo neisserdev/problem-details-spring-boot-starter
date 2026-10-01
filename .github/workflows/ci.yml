@@ -11,13 +11,14 @@ permissions:
 
 jobs:
   verify:
-    name: Java ${{ matrix.java }} - Boot ${{ matrix.boot }}
+    name: Java ${{ matrix.java }} - Boot ${{ matrix.boot == 'pom' && 'current' || matrix.boot }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         java: ['17', '21', '25']
-        boot: ['4.0.8', '4.1.1']
+        # Oldest supported version and the one in the pom
+        boot: ['4.0.8', 'pom']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -26,7 +27,7 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
       - name: Build and test
-        run: mvn -B -ntp verify -Dspring-boot.version=${{ matrix.boot }}
+        run: mvn -B -ntp verify ${{ matrix.boot != 'pom' && format('-Dspring-boot.version={0}', matrix.boot) || '' }}
 
   # Javadoc and sources as in the release, unsigned
   package:

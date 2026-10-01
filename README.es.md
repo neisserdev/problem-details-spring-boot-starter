@@ -1,10 +1,14 @@
 # problem-details-spring-boot-starter
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neisserdev/problem-details-spring-boot-starter)](https://central.sonatype.com/artifact/io.github.neisserdev/problem-details-spring-boot-starter)
+[![CI](https://github.com/neisserdev/problem-details-spring-boot-starter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/neisserdev/problem-details-spring-boot-starter/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [🇪🇸 Español](README.es.md) | [🇬🇧 English](README.md)
 
 Implementación estándar de manejo de errores basados en RFC 9457 (Problem Details) para Spring Boot 4 y Spring MVC. Al integrar esta dependencia, toda la API unifica sus respuestas de error bajo el formato `application/problem+json`, abarcando la capa de dominio, el enrutamiento de Spring MVC, las validaciones y Spring Security.
 
-Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). WebFlux no está soportado.
+Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). WebFlux no está soportado. Funciona en imágenes nativas de GraalVM, el starter registra las pistas que necesita.
 
 ## Instalación
 
@@ -14,17 +18,17 @@ Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). We
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.0")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.1")
 ```
 
-El starter es ligero y no impone dependencias transitivas. Se adapta dinámicamente a las dependencias presentes en el classpath del proyecto (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
+El starter solo aporta `spring-boot-autoconfigure`, `slf4j-api` y la API de Jakarta Validation. Spring MVC, Jackson, Spring Security y Micrometer Tracing son opcionales y se usan cuando el proyecto ya los incluye (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
 
 ## Registro Automático de Componentes
 
@@ -369,7 +373,7 @@ Este patrón de sustitución aplica a cualquier componente central (`ProblemDeta
 
 - Compatibilidad exclusiva con entornos Servlet (Spring MVC). No aplicable a aplicaciones WebFlux.
 - Excepciones no capturadas en filtros personalizados son delegadas al `BasicErrorController` de Spring Boot. Se recomienda implementar bloques `try/catch` y utilizar `ProblemJsonWriter`.
-- Compilado con Spring Boot 4.1.1 (Spring Framework 7.0, Spring Security 7.1, Jackson 3). El CI ejecuta las pruebas con Spring Boot 4.0.8 y 4.1.1 sobre Java 17, 21 y 25.
+- Requiere Spring Boot 4.0 o superior (Spring Framework 7, Spring Security 7, Jackson 3). El CI ejecuta las pruebas con Spring Boot 4.0 y con la versión del pom, sobre Java 17, 21 y 25.
 
 ## Licencia
 
