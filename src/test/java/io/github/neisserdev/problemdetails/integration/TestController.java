@@ -50,6 +50,16 @@ class TestController {
         return user.name();
     }
 
+    @PostMapping("/upload")
+    String upload() {
+        throw new org.springframework.web.multipart.MaxUploadSizeExceededException(5242880);
+    }
+
+    @GetMapping("/users/{id}/profile")
+    String userProfile(@PathVariable("id") long id) {
+        throw new ResourceNotFoundException("User", id);
+    }
+
     // Built-in validation, without @Validated
     @GetMapping("/page")
     String page(@RequestParam("n") @Min(1) int n) {

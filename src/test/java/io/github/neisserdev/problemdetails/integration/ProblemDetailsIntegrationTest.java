@@ -133,11 +133,13 @@ class ProblemDetailsIntegrationTest {
         mvc.perform(post("/public/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"\",\"email\":\"not-an-email\"}"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value(422))
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.type").value(BASE + "VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.count").value(2))
-                .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("name", "email")))
-                .andExpect(jsonPath("$.errors[0].detail").isNotEmpty());
+                .andExpect(jsonPath("$.errors.name").isNotEmpty())
+                .andExpect(jsonPath("$.errors.email").isNotEmpty());
     }
 
     @Test
@@ -173,6 +175,36 @@ class ProblemDetailsIntegrationTest {
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
                 .andExpect(jsonPath("$.type").value(BASE + "UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void unsupportedMediaTypeXml() throws Exception {
+        mvc.perform(post("/public/users").contentType(MediaType.APPLICATION_XML).content("<user><name>Test</name></user>"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415))
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+                .andExpect(jsonPath("$.type").value(BASE + "UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void maxUploadSizeExceededReturns413ContentTooLarge() throws Exception {
+        mvc.perform(post("/public/upload"))
+                .andExpect(status().is(413))
+                .andExpect(jsonPath("$.status").value(413))
+                .andExpect(jsonPath("$.code").value("CONTENT_TOO_LARGE"))
+                .andExpect(jsonPath("$.type").value(BASE + "CONTENT_TOO_LARGE"))
+                .andExpect(jsonPath("$.detail", containsString("5,242,880")));
+    }
+
+    @Test
+    void authenticatedUserAccessingOtherUserResourceReturns404() throws Exception {
+        mvc.perform(get("/public/users/999/profile").with(user("ana")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.type").value(BASE + "RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.resource").value("User"))
+                .andExpect(jsonPath("$.resourceId").value("999"));
     }
 
     @Test

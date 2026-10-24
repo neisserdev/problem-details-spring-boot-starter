@@ -28,4 +28,18 @@ class ErrorCodeTest {
             assertThat(factory.typeOf(code)).hasToString("/problems/" + code.name());
         }
     }
+
+    @Test
+    void standardRfc9110HttpStatusCodes() {
+        assertThat(ErrorCode.VALIDATION_ERROR.getHttpStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST);
+        assertThat(ErrorCode.CONTENT_TOO_LARGE.getHttpStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.CONTENT_TOO_LARGE);
+        assertThat(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        assertThat(ErrorCode.RESOURCE_NOT_FOUND.getHttpStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
+    }
 }

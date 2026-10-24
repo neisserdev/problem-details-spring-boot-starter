@@ -330,6 +330,30 @@ class ProblemDetailsFactoryTest {
         }))).isTrue();
     }
 
+    @Test
+    void resourceNotFoundExceptionConstructors() {
+        ResourceNotFoundException byResource = new ResourceNotFoundException("Product", 123L);
+        assertThat(byResource.getProperties())
+                .containsEntry("resource", "Product")
+                .containsEntry("resourceId", "123");
+        assertThat(byResource.getResource()).isEqualTo("Product");
+        assertThat(byResource.getId()).isEqualTo(123L);
+
+        ResourceNotFoundException byMessage = new ResourceNotFoundException("Not found");
+        assertThat(byMessage.getProperties()).isEmpty();
+        assertThat(byMessage.getMessage()).isEqualTo("Not found");
+        assertThat(byMessage.getResource()).isNull();
+        assertThat(byMessage.getId()).isNull();
+
+        ResourceNotFoundException defaultEx = new ResourceNotFoundException();
+        assertThat(defaultEx.getProperties()).isEmpty();
+        assertThat(defaultEx.getMessage()).isEqualTo("Resource not found");
+
+        Throwable cause = new RuntimeException("root cause");
+        ResourceNotFoundException withCause = new ResourceNotFoundException("Failed", cause);
+        assertThat(withCause.getCause()).isSameAs(cause);
+    }
+
     private static boolean hasNoTraceId(ProblemDetailsFactory factory) {
         return !factory.create(ErrorCode.INTERNAL_ERROR, "x", "/a").getProperties().containsKey("traceId");
     }

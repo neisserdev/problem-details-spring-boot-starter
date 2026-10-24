@@ -70,7 +70,7 @@ class ProblemDetailsLanguageTest {
         assertThat(perform(get("/public/duplicate"), 409))
                 .containsEntry("detail", "La operación entra en conflicto con datos existentes");
 
-        assertThat(perform(post("/public/users").contentType(MediaType.APPLICATION_JSON).content("{}"), 400))
+        assertThat(perform(post("/public/users").contentType(MediaType.APPLICATION_JSON).content("{}"), 422))
                 .containsEntry("title", "Error de validación");
     }
 

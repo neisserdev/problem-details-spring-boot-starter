@@ -1,0 +1,16 @@
+{
+  "properties": [
+    {
+      "name": "problem-details.base-type-url",
+      "type": "java.lang.String",
+      "description": "Prefijo con el que se construye el 'type' del ProblemDetail (RFC 9457). Debe terminar en '/'.",
+      "defaultValue": "https://neisser.dev/problems/"
+    },
+    {
+      "name": "problem-details.security.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Activa los handlers 401/403 de Spring Security y el ProblemJsonWriter que usan. Se ignora si Spring Security no está en el classpath.",
+      "defaultValue": true
+    }
+  ]
+}

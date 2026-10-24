@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,6 +43,7 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -67,7 +69,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    protected final Logger log = LoggerFactory.getLogger(getClass());
 
     private static final String BAD_CREDENTIALS =
             "org.springframework.security.authentication.BadCredentialsException";
@@ -194,7 +196,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return pd;
         }
 
-        log.error("Unhandled exception [{}] on {}", ex.getMessage(), uri, ex);
+        String message = StringUtils.hasText(ex.getMessage()) ? ex.getMessage() : ex.getClass().getSimpleName();
+        log.error("Unhandled exception [{}] on {}", message, uri, ex);
         return factory.create(ErrorCode.INTERNAL_ERROR,
                 factory.detail(ErrorCode.INTERNAL_ERROR, "An internal error occurred"), uri);
     }
@@ -206,17 +209,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             MethodArgumentNotValidException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        // Field errors
-        List<Map<String, String>> errors = new ArrayList<>();
+        // Field and object validation errors formatted as Map<String, String> field -> message
+        Map<String, String> errors = new LinkedHashMap<>();
         ex.getBindingResult().getFieldErrors().forEach(e ->
-                errors.add(error(e.getField(), messageOf(e, "Invalid value"))));
+                errors.merge(e.getField(), messageOf(e, "Invalid value"), (m1, m2) -> m1 + ", " + m2));
 
-        // Class-level rules
         ex.getBindingResult().getGlobalErrors().forEach(e ->
-                errors.add(error("", messageOf(e, "Invalid data"))));
+                errors.merge(e.getObjectName(), messageOf(e, "Invalid data"), (m1, m2) -> m1 + ", " + m2));
 
-        ProblemDetail pd = validationProblem(ErrorCode.VALIDATION_ERROR, errors,
-                "The submitted data is not valid", uriOf(request));
+        String summary = errors.values().stream()
+                .distinct()
+                .collect(Collectors.joining(", "));
+
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put(PROP_ERRORS, errors);
+        extra.put(PROP_COUNT, errors.size());
+        String detail = summary.isBlank()
+                ? factory.detail(ErrorCode.VALIDATION_ERROR, "The submitted data is not valid")
+                : summary;
+
+        ProblemDetail pd = factory.create(ErrorCode.VALIDATION_ERROR, detail, uriOf(request), extra);
         return handleExceptionInternal(ex, pd, headers, ErrorCode.VALIDATION_ERROR.getHttpStatus(), request);
     }
 
@@ -283,6 +295,49 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         ProblemDetail pd = factory.create(ErrorCode.TYPE_MISMATCH, detail, uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.TYPE_MISMATCH.getHttpStatus(), request);
+    }
+
+    /**
+     * Unsupported {@code Content-Type} header (e.g. {@code application/xml} to a JSON endpoint).
+     * Responds with 415 {@link HttpStatus#UNSUPPORTED_MEDIA_TYPE} and type {@code /problems/UNSUPPORTED_MEDIA_TYPE}.
+     */
+    @Override
+    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex, HttpHeaders headers,
+            HttpStatusCode statusCode, WebRequest request) {
+
+        String detail;
+        if (ex.getContentType() != null) {
+            detail = factory.message(
+                    "problemDetail.org.springframework.web.HttpMediaTypeNotSupportedException",
+                    "Content type ''{0}'' is not supported",
+                    ex.getContentType());
+        } else {
+            detail = factory.detail(ErrorCode.UNSUPPORTED_MEDIA_TYPE, "Content type is not supported");
+        }
+
+        ProblemDetail pd = factory.create(ErrorCode.UNSUPPORTED_MEDIA_TYPE, detail, uriOf(request));
+        return handleExceptionInternal(ex, pd, headers, ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus(), request);
+    }
+
+    /**
+     * Request body exceeds the maximum permitted size configured on the server
+     * (e.g. {@code server.tomcat.max-http-form-post-size}, {@code max-swallow-size}).
+     * Responds with 413 {@link HttpStatus#CONTENT_TOO_LARGE} and type {@code /problems/CONTENT_TOO_LARGE}.
+     */
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException ex, HttpHeaders headers,
+            HttpStatusCode statusCode, WebRequest request) {
+
+        log.warn("Payload too large on {}: limit {} bytes", uriOf(request), ex.getMaxUploadSize());
+        String detail = ex.getMaxUploadSize() > 0
+                ? factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "CONTENT_TOO_LARGE.limit",
+                        "The request body exceeds the maximum allowed size of {0} bytes", ex.getMaxUploadSize())
+                : factory.detail(ErrorCode.CONTENT_TOO_LARGE, "The request body exceeds the maximum permitted size");
+
+        ProblemDetail pd = factory.create(ErrorCode.CONTENT_TOO_LARGE, detail, uriOf(request));
+        return handleExceptionInternal(ex, pd, headers, ErrorCode.CONTENT_TOO_LARGE.getHttpStatus(), request);
     }
 
     // Common exit point of ResponseEntityExceptionHandler

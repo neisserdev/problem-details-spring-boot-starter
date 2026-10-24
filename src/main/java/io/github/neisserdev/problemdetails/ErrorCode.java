@@ -23,7 +23,7 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode implements ProblemType {
 
     // Validation and format
-    VALIDATION_ERROR("Validation error", HttpStatus.BAD_REQUEST),
+    VALIDATION_ERROR("Validation error", HttpStatus.UNPROCESSABLE_CONTENT),
     MALFORMED_REQUEST("Malformed request", HttpStatus.BAD_REQUEST),
     TYPE_MISMATCH("Invalid parameter type", HttpStatus.BAD_REQUEST),
     CONSTRAINT_VIOLATION("Constraint violation", HttpStatus.BAD_REQUEST),
