@@ -215,31 +215,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // Spring MVC exceptions with their own detail
 
+    /**
+     * Validation of {@code @Valid} request bodies and model attributes.
+     * Responds with 422 {@link ErrorCode#VALIDATION_ERROR} and the list of
+     * {@code field} and {@code detail} errors.
+     */
     @Override
     protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
-        // Field and object validation errors formatted as Map<String, String> field -> message
-        Map<String, String> errors = new LinkedHashMap<>();
+        List<Map<String, String>> errors = new ArrayList<>();
         ex.getBindingResult().getFieldErrors().forEach(e ->
-                errors.merge(e.getField(), messageOf(e, "Invalid value"), (m1, m2) -> m1 + ", " + m2));
-
+                errors.add(error(e.getField(), messageOf(e, "Invalid value"))));
         ex.getBindingResult().getGlobalErrors().forEach(e ->
-                errors.merge(e.getObjectName(), messageOf(e, "Invalid data"), (m1, m2) -> m1 + ", " + m2));
+                errors.add(error("", messageOf(e, "Invalid data"))));
 
-        String summary = errors.values().stream()
-                .distinct()
-                .collect(Collectors.joining(", "));
-
-        Map<String, Object> extra = new LinkedHashMap<>();
-        extra.put(PROP_ERRORS, errors);
-        extra.put(PROP_COUNT, errors.size());
-        String detail = summary.isBlank()
-                ? factory.detail(ErrorCode.VALIDATION_ERROR, "The submitted data is not valid")
-                : summary;
-
-        ProblemDetail pd = factory.create(ErrorCode.VALIDATION_ERROR, detail, uriOf(request), extra);
+        ProblemDetail pd = validationProblem(ErrorCode.VALIDATION_ERROR, errors,
+                "The submitted data is not valid", uriOf(request));
         return handleExceptionInternal(ex, pd, headers, ErrorCode.VALIDATION_ERROR.getHttpStatus(), request);
     }
 
@@ -454,7 +447,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                     prefixFields ? parameter + "." + e.getField() : e.getField(),
                     messageOf(e, "Invalid value"))));
             parameterErrors.getGlobalErrors().forEach(e ->
-                    errors.add(error(parameter, messageOf(e, "Invalid data"))));
+                    errors.add(error(prefixFields ? parameter : "", messageOf(e, "Invalid data"))));
         } else {
             result.getResolvableErrors().forEach(e ->
                     errors.add(error(parameter, messageOf(e, "Invalid value"))));

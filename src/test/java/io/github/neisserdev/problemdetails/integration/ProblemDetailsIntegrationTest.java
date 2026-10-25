@@ -138,8 +138,21 @@ class ProblemDetailsIntegrationTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.type").value(BASE + "VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.count").value(2))
-                .andExpect(jsonPath("$.errors.name").isNotEmpty())
-                .andExpect(jsonPath("$.errors.email").isNotEmpty());
+                .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("name", "email")))
+                .andExpect(jsonPath("$.errors[0].detail").isNotEmpty())
+                .andExpect(jsonPath("$.errors[1].detail").isNotEmpty());
+    }
+
+    @Test
+    void bodyFieldWithMultipleErrorsProducesOneEntryPerError() throws Exception {
+        mvc.perform(post("/public/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Ana\",\"email\":\" \"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.count").value(2))
+                .andExpect(jsonPath("$.errors[0].field").value("email"))
+                .andExpect(jsonPath("$.errors[1].field").value("email"));
     }
 
     @Test

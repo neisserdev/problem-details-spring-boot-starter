@@ -18,14 +18,14 @@ Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). We
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.3.0</version>
+    <version>1.3.1</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.3.0")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.3.1")
 ```
 
 El starter solo aporta `spring-boot-autoconfigure`, `slf4j-api`, `jspecify` y la API de Jakarta Validation. Spring MVC, Jackson, Spring Security y Micrometer Tracing son opcionales y se usan cuando el proyecto ya los incluye (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
@@ -93,16 +93,19 @@ Nota: `security.enabled=false` desactiva únicamente la integración automática
 El starter incluye excepciones predefinidas para los flujos de negocio más comunes:
 
 ```java
-throw new ResourceNotFoundException("Pedido", id);                   // 404
-throw new ResourceConflictException("El email ya está registrado");  // 409
-throw new BusinessRuleViolationException("El pedido ya se envió");   // 422
+throw new ResourceNotFoundException("Pedido", id);                     // 404
+throw new ResourceNotFoundException("El pedido solicitado no existe"); // 404
+throw new ResourceConflictException("El email ya está registrado");    // 409
+throw new BusinessRuleViolationException("El pedido ya se envió");     // 422
 ```
+
+Cuando `ResourceNotFoundException` recibe el nombre del recurso y su id, añade `resource` y `resourceId` al JSON.
 
 Catálogo predefinido en `ErrorCode`:
 
 | Código | Status HTTP |
 |--------|-------------|
-| `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `CONSTRAINT_VIOLATION` | 400 |
+| `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `CONSTRAINT_VIOLATION` | 400 |
 | `UNAUTHORIZED`, `INVALID_CREDENTIALS` | 401 |
 | `ACCESS_DENIED` | 403 |
 | `RESOURCE_NOT_FOUND`, `ENDPOINT_NOT_FOUND` | 404 |
@@ -111,7 +114,7 @@ Catálogo predefinido en `ErrorCode`:
 | `RESOURCE_CONFLICT` | 409 |
 | `CONTENT_TOO_LARGE` | 413 |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 |
-| `BUSINESS_RULE_VIOLATION` | 422 |
+| `VALIDATION_ERROR`, `BUSINESS_RULE_VIOLATION` | 422 |
 | `TOO_MANY_REQUESTS` | 429 |
 | `INTERNAL_ERROR` | 500 |
 | `SERVICE_UNAVAILABLE` | 503 |
@@ -221,15 +224,15 @@ El detalle es un texto genérico. El mensaje original de la base de datos no se 
 
 Las distintas vías de validación unifican su salida bajo una misma estructura para simplificar el consumo por parte de la aplicación cliente:
 
-- `@Valid @RequestBody` genera `VALIDATION_ERROR`.
-- Restricciones en `@RequestParam`, `@PathVariable`, `@RequestHeader`, etc. generan `CONSTRAINT_VIOLATION`.
-- Restricciones en métodos de beans anotados con `@Validated` (`ConstraintViolationException` y `MethodValidationException`) generan `CONSTRAINT_VIOLATION`.
+- `@Valid @RequestBody` responde 422 `VALIDATION_ERROR`.
+- Restricciones en `@RequestParam`, `@PathVariable`, `@RequestHeader`, etc. responden 400 `CONSTRAINT_VIOLATION`.
+- Restricciones en métodos de beans anotados con `@Validated` (`ConstraintViolationException` y `MethodValidationException`) responden 400 `CONSTRAINT_VIOLATION`.
 
 ```json
 {
   "type": "/problems/VALIDATION_ERROR",
   "title": "Error de validación",
-  "status": 400,
+  "status": 422,
   "detail": "no debe estar vacío, debe ser una dirección de correo electrónico con formato correcto",
   "instance": "/usuarios",
   "timestamp": "2026-09-27T18:42:10.512Z",
@@ -242,7 +245,7 @@ Las distintas vías de validación unifican su salida bajo una misma estructura 
 }
 ```
 
-En los parámetros de entrada, el atributo `field` refleja el nombre expuesto en la API (`@RequestParam("n")` se serializa como `"n"`). Los errores de validación a nivel de clase que involucran múltiples propiedades exponen el atributo `field` vacío.
+En los parámetros de entrada, el atributo `field` refleja el nombre expuesto en la API (`@RequestParam("n")` se serializa como `"n"`). Los errores de validación a nivel de clase o entre varios parámetros exponen el atributo `field` vacío.
 
 ## Internacionalización
 
@@ -256,8 +259,9 @@ Con `es` se traducen además los detalles que genera Spring MVC (405, 415, pará
 | Clave | Uso |
 |-------|-----|
 | `problemDetails.title.<CODIGO>` | Título de cualquier `ProblemType`, incluidos los catálogos propios. |
-| `problemDetails.detail.<CODIGO>` | Detalle fijo de `INTERNAL_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `VALIDATION_ERROR`, `CONSTRAINT_VIOLATION`, `INVALID_CREDENTIALS`, `UNAUTHORIZED` y `ACCESS_DENIED`. |
+| `problemDetails.detail.<CODIGO>` | Detalle fijo de `INTERNAL_ERROR`, `MALFORMED_REQUEST`, `TYPE_MISMATCH`, `VALIDATION_ERROR`, `CONSTRAINT_VIOLATION`, `INVALID_CREDENTIALS`, `UNAUTHORIZED`, `ACCESS_DENIED`, `UNSUPPORTED_MEDIA_TYPE` y `CONTENT_TOO_LARGE`. |
 | `problemDetails.detail.TYPE_MISMATCH.parameter` | Detalle de `TYPE_MISMATCH` con el nombre (`{0}`) y el tipo (`{1}`) del parámetro. |
+| `problemDetails.detail.CONTENT_TOO_LARGE.limit` | Detalle de `CONTENT_TOO_LARGE` con el límite máximo permitido en bytes (`{0}`). |
 | `problemDetails.detail.RESOURCE_CONFLICT.integrity` | Detalle de las violaciones de restricciones de la base de datos. |
 | `problemDetails.detail.RESOURCE_CONFLICT.concurrency` | Detalle de los conflictos de bloqueo optimista. |
 | `problemDetails.detail.RESOURCE_NOT_FOUND.resource` | Detalle de `ResourceNotFoundException` con el recurso (`{0}`) y el id (`{1}`). |
@@ -274,7 +278,7 @@ Los mensajes con argumentos siguen el formato de `MessageFormat`, por lo que las
 
 ## Registro de Errores
 
-Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Los conflictos de datos se registran en DEBUG y las excepciones no controladas siempre en ERROR. Para ver los 4xx durante el desarrollo:
+Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Los conflictos de datos se registran en DEBUG, los excesos de tamaño de carga (`MaxUploadSizeExceededException`) en WARN y las excepciones no controladas siempre en ERROR. Para ver los 4xx durante el desarrollo:
 
 ```yaml
 logging:
