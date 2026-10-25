@@ -3,6 +3,8 @@ package io.github.neisserdev.problemdetails;
 import java.util.Map;
 import java.util.Objects;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Base of business exceptions. Each subclass declares its {@link ProblemType}
  * and the global handler turns it into a {@code ProblemDetail}.
@@ -23,7 +25,7 @@ public abstract class BusinessException extends RuntimeException {
      * @param problemType problem type
      * @param message     text of the {@code detail}
      */
-    protected BusinessException(ProblemType problemType, String message) {
+    protected BusinessException(ProblemType problemType, @Nullable String message) {
         super(message);
         this.problemType = Objects.requireNonNull(problemType, "problemType");
     }
@@ -33,7 +35,7 @@ public abstract class BusinessException extends RuntimeException {
      * @param message     text of the {@code detail}
      * @param cause       original cause, for the logs only
      */
-    protected BusinessException(ProblemType problemType, String message, Throwable cause) {
+    protected BusinessException(ProblemType problemType, @Nullable String message, @Nullable Throwable cause) {
         super(message, cause);
         this.problemType = Objects.requireNonNull(problemType, "problemType");
     }
@@ -65,7 +67,7 @@ public abstract class BusinessException extends RuntimeException {
      *
      * @return the key, or {@code null} to always use the exception message
      */
-    public String getDetailMessageCode() { return null; }
+    public @Nullable String getDetailMessageCode() { return null; }
 
     /**
      * Arguments for the {@code {0}}, {@code {1}}... placeholders of the
@@ -73,5 +75,5 @@ public abstract class BusinessException extends RuntimeException {
      *
      * @return the arguments, empty by default
      */
-    public Object[] getDetailMessageArguments() { return new Object[0]; }
+    public @Nullable Object[] getDetailMessageArguments() { return new Object[0]; }
 }

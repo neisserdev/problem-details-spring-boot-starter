@@ -1,5 +1,7 @@
 package io.github.neisserdev.problemdetails;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Provides the trace identifier of the current request.
  *
@@ -12,5 +14,5 @@ public interface TraceIdProvider {
     /**
      * @return the current traceId, or {@code null} when there is no trace
      */
-    String currentTraceId();
+    @Nullable String currentTraceId();
 }

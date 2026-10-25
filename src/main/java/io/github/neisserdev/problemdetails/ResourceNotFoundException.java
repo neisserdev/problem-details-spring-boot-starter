@@ -3,6 +3,8 @@ package io.github.neisserdev.problemdetails;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Missing resource. Responds 404 Not Found.
  *
@@ -22,8 +24,8 @@ public class ResourceNotFoundException extends BusinessException {
 
     private static final String DETAIL_CODE = ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_NOT_FOUND.resource";
 
-    private final String resource;
-    private final transient Object id;
+    private final @Nullable String resource;
+    private final transient @Nullable Object id;
 
     /**
      * Creates an exception specifying the resource name and its identifier.
@@ -42,7 +44,7 @@ public class ResourceNotFoundException extends BusinessException {
      *
      * @param message the detail message
      */
-    public ResourceNotFoundException(String message) {
+    public ResourceNotFoundException(@Nullable String message) {
         super(ErrorCode.RESOURCE_NOT_FOUND, message);
         this.resource = null;
         this.id = null;
@@ -54,7 +56,7 @@ public class ResourceNotFoundException extends BusinessException {
      * @param message the detail message
      * @param cause   the cause
      */
-    public ResourceNotFoundException(String message, Throwable cause) {
+    public ResourceNotFoundException(@Nullable String message, @Nullable Throwable cause) {
         super(ErrorCode.RESOURCE_NOT_FOUND, message, cause);
         this.resource = null;
         this.id = null;
@@ -72,14 +74,14 @@ public class ResourceNotFoundException extends BusinessException {
     /**
      * @return the resource name, or {@code null} if not specified
      */
-    public String getResource() {
+    public @Nullable String getResource() {
         return resource;
     }
 
     /**
      * @return the resource id, or {@code null} if not specified
      */
-    public Object getId() {
+    public @Nullable Object getId() {
         return id;
     }
 
@@ -99,13 +101,13 @@ public class ResourceNotFoundException extends BusinessException {
     }
 
     @Override
-    public String getDetailMessageCode() {
+    public @Nullable String getDetailMessageCode() {
         return (resource != null && id != null) ? DETAIL_CODE : null;
     }
 
     // As text, so MessageFormat does not group the digits of numeric ids
     @Override
-    public Object[] getDetailMessageArguments() {
+    public @Nullable Object[] getDetailMessageArguments() {
         return (resource != null && id != null)
                 ? new Object[] {String.valueOf(resource), String.valueOf(id)}
                 : new Object[0];

@@ -6,6 +6,7 @@ import java.util.Objects;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -24,13 +25,13 @@ import io.github.neisserdev.problemdetails.ProblemJsonWriter;
 public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
     private final ProblemJsonWriter writer;
-    private final String wwwAuthenticate;
+    private final @Nullable String wwwAuthenticate;
 
     /**
      * @param writer          problem+json writer
      * @param wwwAuthenticate value of {@code WWW-Authenticate}, empty or {@code null} to omit it
      */
-    public SecurityAuthenticationEntryPoint(ProblemJsonWriter writer, String wwwAuthenticate) {
+    public SecurityAuthenticationEntryPoint(ProblemJsonWriter writer, @Nullable String wwwAuthenticate) {
         this.writer = Objects.requireNonNull(writer, "writer");
         this.wwwAuthenticate = StringUtils.hasText(wwwAuthenticate) ? wwwAuthenticate.strip() : null;
     }

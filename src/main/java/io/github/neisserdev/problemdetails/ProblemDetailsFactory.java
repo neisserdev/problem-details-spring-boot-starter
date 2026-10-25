@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.context.support.ResourceBundleMessageSource;
@@ -61,8 +62,8 @@ public class ProblemDetailsFactory {
     private static final ResourceBundleMessageSource DEFAULT_MESSAGES = defaultMessages();
 
     private final String baseType;
-    private final MessageSource messageSource;
-    private final TraceIdProvider traceIdProvider;
+    private final @Nullable MessageSource messageSource;
+    private final @Nullable TraceIdProvider traceIdProvider;
     private final Locale language;
 
     /** Creates the factory with the default base ({@value #DEFAULT_BASE_TYPE}). */
@@ -82,7 +83,7 @@ public class ProblemDetailsFactory {
      * @param baseTypeUrl   base of the {@code type}, relative or absolute
      * @param messageSource source of the translations, may be {@code null}
      */
-    public ProblemDetailsFactory(String baseTypeUrl, MessageSource messageSource) {
+    public ProblemDetailsFactory(String baseTypeUrl, @Nullable MessageSource messageSource) {
         this(baseTypeUrl, messageSource, null);
     }
 
@@ -91,7 +92,8 @@ public class ProblemDetailsFactory {
      * @param messageSource   source of the translations, may be {@code null}
      * @param traceIdProvider source of the {@code traceId}, may be {@code null}
      */
-    public ProblemDetailsFactory(String baseTypeUrl, MessageSource messageSource, TraceIdProvider traceIdProvider) {
+    public ProblemDetailsFactory(String baseTypeUrl, @Nullable MessageSource messageSource,
+                                 @Nullable TraceIdProvider traceIdProvider) {
         this(baseTypeUrl, messageSource, traceIdProvider, Locale.ENGLISH);
     }
 
@@ -102,8 +104,8 @@ public class ProblemDetailsFactory {
      * @param language        language of the default texts, English when it is not bundled
      * @throws IllegalArgumentException if the base is empty or does not form a valid URI
      */
-    public ProblemDetailsFactory(String baseTypeUrl, MessageSource messageSource,
-                                 TraceIdProvider traceIdProvider, Locale language) {
+    public ProblemDetailsFactory(String baseTypeUrl, @Nullable MessageSource messageSource,
+                                 @Nullable TraceIdProvider traceIdProvider, @Nullable Locale language) {
         if (baseTypeUrl == null || baseTypeUrl.isBlank()) {
             throw new IllegalArgumentException("problem-details.base-type-url must not be empty");
         }
@@ -166,7 +168,7 @@ public class ProblemDetailsFactory {
      * @param requestUri path of the request, for the {@code instance}
      * @return the problem ready to be returned
      */
-    public ProblemDetail create(BusinessException ex, String requestUri) {
+    public ProblemDetail create(BusinessException ex, @Nullable String requestUri) {
         String detail = ex.getMessage();
         String code = ex.getDetailMessageCode();
         if (code != null) {
@@ -184,7 +186,7 @@ public class ProblemDetailsFactory {
      * @param requestUri path of the request, for the {@code instance}
      * @return the problem ready to be returned
      */
-    public ProblemDetail create(ProblemType type, String detail, String requestUri) {
+    public ProblemDetail create(ProblemType type, @Nullable String detail, @Nullable String requestUri) {
         return create(type, detail, requestUri, Map.of());
     }
 
@@ -195,7 +197,8 @@ public class ProblemDetailsFactory {
      * @param extra      extension members; {@code code} and {@code timestamp} are ignored
      * @return the problem ready to be returned
      */
-    public ProblemDetail create(ProblemType type, String detail, String requestUri, Map<String, ?> extra) {
+    public ProblemDetail create(ProblemType type, @Nullable String detail, @Nullable String requestUri,
+                                @Nullable Map<String, ?> extra) {
         Objects.requireNonNull(type, "type");
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(type.getHttpStatus(), detail);
         pd.setType(typeOf(type));
@@ -226,7 +229,7 @@ public class ProblemDetailsFactory {
      * @param status     HTTP status of the response
      * @param requestUri path of the request, for the {@code instance}
      */
-    public void complete(ProblemDetail pd, int status, String requestUri) {
+    public void complete(ProblemDetail pd, int status, @Nullable String requestUri) {
         Map<String, Object> props = pd.getProperties();
 
         if (props == null || !props.containsKey(PROP_CODE)) {
@@ -291,7 +294,7 @@ public class ProblemDetailsFactory {
      * @param args        arguments for the {@code {0}}, {@code {1}}... placeholders
      * @return the translated detail or the default text
      */
-    public String detail(ProblemType type, String defaultText, Object... args) {
+    public String detail(ProblemType type, String defaultText, @Nullable Object @Nullable ... args) {
         return message(DETAIL_KEY_PREFIX + type.getCode(), defaultText, args);
     }
 
@@ -307,7 +310,7 @@ public class ProblemDetailsFactory {
      * @param args        arguments for the {@code {0}}, {@code {1}}... placeholders
      * @return the resolved text
      */
-    public String message(String key, String defaultText, Object... args) {
+    public String message(@Nullable String key, String defaultText, @Nullable Object @Nullable ... args) {
         String resolved = resolve(key, args);
         if (resolved != null) {
             return resolved;
@@ -323,7 +326,7 @@ public class ProblemDetailsFactory {
     }
 
     // Application translation first, then the bundled one; null if neither exists
-    String resolve(String key, Object... args) {
+    @Nullable String resolve(@Nullable String key, @Nullable Object @Nullable ... args) {
         if (key == null) {
             return null;
         }
@@ -374,7 +377,7 @@ public class ProblemDetailsFactory {
     }
 
     // instance is optional, it is omitted when the path is not a valid URI
-    private static URI toInstance(String requestUri) {
+    private static @Nullable URI toInstance(@Nullable String requestUri) {
         if (requestUri == null || requestUri.isEmpty()) {
             return null;
         }

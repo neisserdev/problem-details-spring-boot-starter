@@ -18,17 +18,17 @@ Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). We
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.1.1</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.1")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.3.0")
 ```
 
-El starter solo aporta `spring-boot-autoconfigure`, `slf4j-api` y la API de Jakarta Validation. Spring MVC, Jackson, Spring Security y Micrometer Tracing son opcionales y se usan cuando el proyecto ya los incluye (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
+El starter solo aporta `spring-boot-autoconfigure`, `slf4j-api`, `jspecify` y la API de Jakarta Validation. Spring MVC, Jackson, Spring Security y Micrometer Tracing son opcionales y se usan cuando el proyecto ya los incluye (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
 
 ## Registro Automático de Componentes
 
@@ -222,8 +222,8 @@ El detalle es un texto genérico. El mensaje original de la base de datos no se 
 Las distintas vías de validación unifican su salida bajo una misma estructura para simplificar el consumo por parte de la aplicación cliente:
 
 - `@Valid @RequestBody` genera `VALIDATION_ERROR`.
-- Restricciones en `@RequestParam` o `@PathVariable` generan `CONSTRAINT_VIOLATION`.
-- Restricciones en métodos de beans anotados con `@Validated` (`ConstraintViolationException`) generan `CONSTRAINT_VIOLATION`.
+- Restricciones en `@RequestParam`, `@PathVariable`, `@RequestHeader`, etc. generan `CONSTRAINT_VIOLATION`.
+- Restricciones en métodos de beans anotados con `@Validated` (`ConstraintViolationException` y `MethodValidationException`) generan `CONSTRAINT_VIOLATION`.
 
 ```json
 {

@@ -1,5 +1,6 @@
 package io.github.neisserdev.problemdetails;
 
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +14,7 @@ import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
 import jakarta.validation.Path;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.TypeMismatchException;
@@ -28,14 +30,22 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.util.StringUtils;
+import org.springframework.validation.method.MethodValidationException;
+import org.springframework.validation.method.MethodValidationResult;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.MatrixVariable;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -206,7 +216,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // Spring MVC exceptions with their own detail
 
     @Override
-    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
@@ -237,30 +247,50 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Built-in Spring MVC validation of parameters without {@code @Validated}.
      */
     @Override
-    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+    protected @Nullable ResponseEntity<Object> handleHandlerMethodValidationException(
             HandlerMethodValidationException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
         // Invalid return value, a server error
         if (ex.isForReturnValue()) {
+            log.error("Invalid return value of {} on {}", ex.getMethod(), uriOf(request), ex);
             return super.handleHandlerMethodValidationException(ex, headers, statusCode, request);
         }
 
         List<Map<String, String>> errors = new ArrayList<>();
         for (ParameterValidationResult result : ex.getParameterValidationResults()) {
-            String parameter = parameterName(result);
-            if (result instanceof ParameterErrors parameterErrors) {
-                parameterErrors.getFieldErrors().forEach(e ->
-                        errors.add(error(e.getField(), messageOf(e, "Invalid value"))));
-                parameterErrors.getGlobalErrors().forEach(e ->
-                        errors.add(error(parameter, messageOf(e, "Invalid data"))));
-            } else {
-                result.getResolvableErrors().forEach(e ->
-                        errors.add(error(parameter, messageOf(e, "Invalid value"))));
-            }
+            addErrors(result, parameterName(result), false, errors);
         }
-        ex.getCrossParameterValidationResults().forEach(e ->
-                errors.add(error("", messageOf(e, "Invalid parameters"))));
+        addCrossParameterErrors(ex, errors);
+
+        ProblemDetail pd = validationProblem(ErrorCode.CONSTRAINT_VIOLATION, errors,
+                "One or more parameters do not meet the constraints", uriOf(request));
+        return handleExceptionInternal(ex, pd, headers, ErrorCode.CONSTRAINT_VIOLATION.getHttpStatus(), request);
+    }
+
+    /**
+     * Method validation of {@code @Validated} beans when
+     * {@code spring.validation.method.adapt-constraint-violations} is enabled.
+     * Responds like {@link #handleConstraintViolation}, so enabling the property
+     * does not change the response.
+     */
+    @Override
+    protected @Nullable ResponseEntity<Object> handleMethodValidationException(
+            MethodValidationException ex, HttpHeaders headers,
+            HttpStatus status, WebRequest request) {
+
+        // Invalid return value, a server error
+        if (ex.isForReturnValue()) {
+            log.error("Invalid return value of {} on {}", ex.getMethod(), uriOf(request), ex);
+            return super.handleMethodValidationException(ex, headers, status, request);
+        }
+
+        List<Map<String, String>> errors = new ArrayList<>();
+        for (ParameterValidationResult result : ex.getParameterValidationResults()) {
+            boolean prefixFields = !result.getMethodParameter().hasParameterAnnotation(RequestBody.class);
+            addErrors(result, parameterName(result), prefixFields, errors);
+        }
+        addCrossParameterErrors(ex, errors);
 
         ProblemDetail pd = validationProblem(ErrorCode.CONSTRAINT_VIOLATION, errors,
                 "One or more parameters do not meet the constraints", uriOf(request));
@@ -268,7 +298,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleHttpMessageNotReadable(
+    protected @Nullable ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
@@ -281,7 +311,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleTypeMismatch(
+    protected @Nullable ResponseEntity<Object> handleTypeMismatch(
             TypeMismatchException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
@@ -303,7 +333,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Responds with 415 {@link HttpStatus#UNSUPPORTED_MEDIA_TYPE} and type {@code /problems/UNSUPPORTED_MEDIA_TYPE}.
      */
     @Override
-    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
+    protected @Nullable ResponseEntity<Object> handleHttpMediaTypeNotSupported(
             HttpMediaTypeNotSupportedException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
@@ -313,6 +343,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                     "problemDetail.org.springframework.web.HttpMediaTypeNotSupportedException",
                     "Content type ''{0}'' is not supported",
                     ex.getContentType());
+        } else if (ex.getDetailMessageCode().endsWith(".parseError")) {
+            detail = factory.message(ex.getDetailMessageCode(), "Could not parse Content-Type.");
         } else {
             detail = factory.detail(ErrorCode.UNSUPPORTED_MEDIA_TYPE, "Content type is not supported");
         }
@@ -327,7 +359,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Responds with 413 {@link HttpStatus#CONTENT_TOO_LARGE} and type {@code /problems/CONTENT_TOO_LARGE}.
      */
     @Override
-    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
+    protected @Nullable ResponseEntity<Object> handleMaxUploadSizeExceededException(
             MaxUploadSizeExceededException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
@@ -348,8 +380,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Returns {@code null} when the response was already sent.
      */
     @Override
-    protected ResponseEntity<Object> handleExceptionInternal(
-            Exception ex, Object body, HttpHeaders headers,
+    protected @Nullable ResponseEntity<Object> handleExceptionInternal(
+            Exception ex, @Nullable Object body, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
         ResponseEntity<Object> responseEntity = super.handleExceptionInternal(ex, body, headers, statusCode, request);
@@ -388,7 +420,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // Common shape of validation errors, the detail lists the messages
     private ProblemDetail validationProblem(ErrorCode code, List<Map<String, String>> errors,
-                                            String genericDetail, String uri) {
+                                            String genericDetail, @Nullable String uri) {
         String summary = errors.stream()
                 .map(e -> e.get(PROP_DETAIL))
                 .distinct()
@@ -413,26 +445,76 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return message != null ? message : defaultText;
     }
 
-    // Name of @RequestParam or @PathVariable, otherwise the Java parameter name
+    // Errors of one parameter. With prefixFields the fields of a validated bean
+    // include the parameter, as in the path of a ConstraintViolation: "user.email"
+    private static void addErrors(ParameterValidationResult result, String parameter,
+                                  boolean prefixFields, List<Map<String, String>> errors) {
+        if (result instanceof ParameterErrors parameterErrors) {
+            parameterErrors.getFieldErrors().forEach(e -> errors.add(error(
+                    prefixFields ? parameter + "." + e.getField() : e.getField(),
+                    messageOf(e, "Invalid value"))));
+            parameterErrors.getGlobalErrors().forEach(e ->
+                    errors.add(error(parameter, messageOf(e, "Invalid data"))));
+        } else {
+            result.getResolvableErrors().forEach(e ->
+                    errors.add(error(parameter, messageOf(e, "Invalid value"))));
+        }
+    }
+
+    private static void addCrossParameterErrors(MethodValidationResult result, List<Map<String, String>> errors) {
+        result.getCrossParameterValidationResults().forEach(e ->
+                errors.add(error("", messageOf(e, "Invalid parameters"))));
+    }
+
+    // Name seen by the client: the one of the web annotation (@RequestParam,
+    // @PathVariable, @RequestHeader...), otherwise the Java parameter name.
+    // Read directly instead of HandlerMethodValidationException.visitResults,
+    // which fails on @RequestPart and @ModelAttribute without ParameterErrors.
     private static String parameterName(ParameterValidationResult result) {
         MethodParameter parameter = result.getMethodParameter();
-        String name = null;
+        String name = annotatedName(parameter);
+        return withContainerPosition(name != null ? name : declaredName(parameter), result);
+    }
 
-        RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
-        if (requestParam != null) {
-            name = firstWithText(requestParam.name(), requestParam.value());
+    private static @Nullable String annotatedName(MethodParameter parameter) {
+        for (Annotation annotation : parameter.getParameterAnnotations()) {
+            if (annotation instanceof RequestParam a) {
+                return firstWithText(a.name(), a.value());
+            }
+            if (annotation instanceof PathVariable a) {
+                return firstWithText(a.name(), a.value());
+            }
+            if (annotation instanceof RequestHeader a) {
+                return firstWithText(a.name(), a.value());
+            }
+            if (annotation instanceof CookieValue a) {
+                return firstWithText(a.name(), a.value());
+            }
+            if (annotation instanceof MatrixVariable a) {
+                return firstWithText(a.name(), a.value());
+            }
+            if (annotation instanceof RequestPart a) {
+                return firstWithText(a.name(), a.value());
+            }
+            if (annotation instanceof ModelAttribute a) {
+                return firstWithText(a.name(), a.value());
+            }
         }
-        PathVariable pathVariable = parameter.getParameterAnnotation(PathVariable.class);
-        if (name == null && pathVariable != null) {
-            name = firstWithText(pathVariable.name(), pathVariable.value());
-        }
-        if (name == null) {
-            name = parameter.getParameterName();
-        }
-        if (name == null) {
-            name = "arg" + parameter.getParameterIndex();
-        }
+        return null;
+    }
 
+    private static String declaredName(MethodParameter parameter) {
+        String name = parameter.getParameterName();
+        if (name != null) {
+            return name;
+        }
+        return parameter.getParameterIndex() >= 0
+                ? parameter.getParameter().getName()
+                : "arg" + parameter.getParameterIndex();
+    }
+
+    // Element of a List or Map parameter: "ids[2]", "filters[status]"
+    private static String withContainerPosition(String name, ParameterValidationResult result) {
         if (result.getContainerIndex() != null) {
             return name + "[" + result.getContainerIndex() + "]";
         }
@@ -442,7 +524,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return name;
     }
 
-    private static String firstWithText(String a, String b) {
+    private static @Nullable String firstWithText(@Nullable String a, @Nullable String b) {
         if (StringUtils.hasText(a)) {
             return a;
         }
@@ -473,7 +555,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // DispatcherServlet exposes the current response
-    private static void applyHeaders(Map<String, String> headers) {
+    private static void applyHeaders(@Nullable Map<String, String> headers) {
         if (headers == null || headers.isEmpty()) {
             return;
         }
@@ -498,7 +580,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return false;
     }
 
-    private static String uriOf(WebRequest request) {
+    private static @Nullable String uriOf(WebRequest request) {
         if (request instanceof ServletWebRequest servletRequest) {
             return servletRequest.getRequest().getRequestURI();
         }

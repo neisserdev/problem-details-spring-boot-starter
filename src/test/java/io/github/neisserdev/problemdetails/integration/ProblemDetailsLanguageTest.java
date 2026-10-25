@@ -49,6 +49,9 @@ class ProblemDetailsLanguageTest {
                 .get("detail").toString())
                 .startsWith("El Content-Type 'text/plain");
 
+        assertThat(perform(post("/public/users").header("Content-Type", "invalid/media/type").content("{}"), 415))
+                .containsEntry("detail", "No se pudo interpretar el Content-Type.");
+
         assertThat(perform(get("/public/no-such-route"), 404).get("detail").toString())
                 .startsWith("No existe el recurso")
                 .contains("no-such-route");

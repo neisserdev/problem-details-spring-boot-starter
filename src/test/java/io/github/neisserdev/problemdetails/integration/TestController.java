@@ -1,5 +1,7 @@
 package io.github.neisserdev.problemdetails.integration;
 
+import java.lang.reflect.Method;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -10,10 +12,14 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.beanvalidation.MethodValidationAdapter;
+import org.springframework.validation.method.MethodValidationException;
+import org.springframework.validation.method.MethodValidationResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -66,9 +72,26 @@ class TestController {
         return "page " + n;
     }
 
+    @GetMapping("/header")
+    String header(@RequestHeader("X-Tenant") @NotBlank String tenant) {
+        return tenant;
+    }
+
     // AOP validation in a @Validated service
     @GetMapping("/service")
     String findInService(@RequestParam("n") int n) {
+        return service.find(n);
+    }
+
+    // Adapted method validation (spring.validation.method.adapt-constraint-violations=true)
+    @GetMapping("/adapted-service")
+    String findInAdaptedService(@RequestParam("n") int n) throws NoSuchMethodException {
+        Method method = TestService.class.getMethod("find", int.class);
+        MethodValidationResult result = new MethodValidationAdapter()
+                .validateArguments(new TestService(), method, null, new Object[] {n}, new Class<?>[0]);
+        if (result.hasErrors()) {
+            throw new MethodValidationException(result);
+        }
         return service.find(n);
     }
 

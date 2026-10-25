@@ -18,17 +18,17 @@ Requirements: Java 17 or later, Spring Boot 4 and a servlet environment (Spring 
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.1.1</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.1.1")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.3.0")
 ```
 
-The starter only brings `spring-boot-autoconfigure`, `slf4j-api` and the Jakarta Validation API. Spring MVC, Jackson, Spring Security and Micrometer Tracing are optional and are used when the project already includes them (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
+The starter only brings `spring-boot-autoconfigure`, `slf4j-api`, `jspecify` and the Jakarta Validation API. Spring MVC, Jackson, Spring Security and Micrometer Tracing are optional and are used when the project already includes them (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
 
 ## Auto-configured Components
 
@@ -222,8 +222,8 @@ The detail is a generic text. The original database message is never exposed to 
 All validation paths share the same structure, so clients handle them in a single way:
 
 - `@Valid @RequestBody` produces `VALIDATION_ERROR`.
-- Constraints on `@RequestParam` or `@PathVariable` produce `CONSTRAINT_VIOLATION`.
-- Constraints on methods of `@Validated` beans (`ConstraintViolationException`) produce `CONSTRAINT_VIOLATION`.
+- Constraints on `@RequestParam`, `@PathVariable`, `@RequestHeader`, etc. produce `CONSTRAINT_VIOLATION`.
+- Constraints on methods of `@Validated` beans (`ConstraintViolationException` and `MethodValidationException`) produce `CONSTRAINT_VIOLATION`.
 
 ```json
 {

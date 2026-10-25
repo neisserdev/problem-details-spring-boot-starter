@@ -2,6 +2,7 @@ package io.github.neisserdev.problemdetails.autoconfigure;
 
 import java.util.Locale;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import io.github.neisserdev.problemdetails.ProblemDetailsFactory;
@@ -132,13 +133,14 @@ public class ProblemDetailsProperties {
 
         /**
          * Register the 401 entry point and the 403 handler in the filter chain.
+         * Ignored when Spring Security is not on the classpath.
          */
         private boolean enabled = true;
 
         /**
          * Value of WWW-Authenticate in 401 responses. Empty to omit it.
          */
-        private String wwwAuthenticate = "Bearer";
+        private @Nullable String wwwAuthenticate = "Bearer";
 
         /**
          * @return whether the integration is active
@@ -157,14 +159,14 @@ public class ProblemDetailsProperties {
         /**
          * @return the value of {@code WWW-Authenticate}
          */
-        public String getWwwAuthenticate() {
+        public @Nullable String getWwwAuthenticate() {
             return wwwAuthenticate;
         }
 
         /**
          * @param wwwAuthenticate the value of {@code WWW-Authenticate}
          */
-        public void setWwwAuthenticate(String wwwAuthenticate) {
+        public void setWwwAuthenticate(@Nullable String wwwAuthenticate) {
             this.wwwAuthenticate = wwwAuthenticate;
         }
     }

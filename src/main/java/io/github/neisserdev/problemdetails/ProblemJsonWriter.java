@@ -7,8 +7,10 @@ import java.util.Objects;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.json.ProblemDetailJacksonMixin;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -21,8 +23,9 @@ import tools.jackson.databind.json.JsonMapper;
  *         "Request limit exceeded", "Retry-After", "30");
  * }</pre>
  *
- * <p>Requires the Spring Boot {@link JsonMapper}, which serializes the
- * {@link ProblemDetail} extensions at the root of the JSON.
+ * <p>Registers {@link ProblemDetailJacksonMixin} when the given
+ * {@link JsonMapper} does not have a mix-in for {@link ProblemDetail}, so
+ * extension members are always serialized at the root of the JSON.
  */
 public class ProblemJsonWriter {
 
@@ -34,8 +37,12 @@ public class ProblemJsonWriter {
      * @param factory    factory that builds the problems
      */
     public ProblemJsonWriter(JsonMapper jsonMapper, ProblemDetailsFactory factory) {
-        this.jsonMapper = Objects.requireNonNull(jsonMapper, "jsonMapper");
+        Objects.requireNonNull(jsonMapper, "jsonMapper");
         this.factory = Objects.requireNonNull(factory, "factory");
+        this.jsonMapper = jsonMapper.serializationConfig() != null
+                && jsonMapper.serializationConfig().findMixInClassFor(ProblemDetail.class) == null
+                ? jsonMapper.rebuild().addMixIn(ProblemDetail.class, ProblemDetailJacksonMixin.class).build()
+                : jsonMapper;
     }
 
     /**
@@ -53,7 +60,7 @@ public class ProblemJsonWriter {
      * @throws IOException if writing the response fails
      */
     public void write(HttpServletResponse response, HttpServletRequest request,
-                      ProblemType type, String detail) throws IOException {
+                      ProblemType type, @Nullable String detail) throws IOException {
         write(response, request, type, detail, null, null);
     }
 
@@ -67,8 +74,8 @@ public class ProblemJsonWriter {
      * @throws IOException if writing the response fails
      */
     public void write(HttpServletResponse response, HttpServletRequest request,
-                      ProblemType type, String detail,
-                      String headerName, String headerValue) throws IOException {
+                      ProblemType type, @Nullable String detail,
+                      @Nullable String headerName, @Nullable String headerValue) throws IOException {
 
         if (headerName != null && headerValue != null && !response.isCommitted()) {
             response.setHeader(headerName, headerValue);

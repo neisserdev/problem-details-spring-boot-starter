@@ -5,4 +5,8 @@
  * {@link io.github.neisserdev.problemdetails.ProblemType} and
  * {@link io.github.neisserdev.problemdetails.BusinessException}.
  */
+@NullMarked
 package io.github.neisserdev.problemdetails;
+
+import org.jspecify.annotations.NullMarked;
+

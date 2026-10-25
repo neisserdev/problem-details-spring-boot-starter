@@ -252,6 +252,28 @@ class ProblemDetailsAutoConfigurationTest {
     }
 
     @Test
+    void theWriterAddsTheMixinWhenTheApplicationJsonMapperDoesNotHaveIt() {
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ProblemDetailsAutoConfiguration.class))
+                .withBean(JsonMapper.class, () -> JsonMapper.builder().build())
+                .run(ctx -> {
+                    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/private/data");
+                    MockHttpServletResponse response = new MockHttpServletResponse();
+
+                    ctx.getBean(ProblemJsonWriter.class).write(response, request,
+                            ErrorCode.UNAUTHORIZED, "Authentication is required");
+
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> body = ctx.getBean(JsonMapper.class)
+                            .readValue(response.getContentAsString(), Map.class);
+                    assertThat(body)
+                            .containsEntry("code", "UNAUTHORIZED")
+                            .containsKey("timestamp")
+                            .doesNotContainKey("properties");
+                });
+    }
+
+    @Test
     void theWriterLeavesACommittedResponseUntouched() {
         contextRunner.run(ctx -> {
             MockHttpServletResponse response = new MockHttpServletResponse();

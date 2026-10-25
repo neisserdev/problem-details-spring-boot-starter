@@ -152,8 +152,27 @@ class ProblemDetailsIntegrationTest {
     }
 
     @Test
+    void headerThatViolatesAConstraintUsesTheHeaderName() throws Exception {
+        mvc.perform(get("/public/header").header("X-Tenant", " "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CONSTRAINT_VIOLATION"))
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value("X-Tenant"));
+    }
+
+    @Test
     void constraintInAValidatedService() throws Exception {
         mvc.perform(get("/public/service").param("n", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CONSTRAINT_VIOLATION"))
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value("n"))
+                .andExpect(jsonPath("$.errors[0].detail").isNotEmpty());
+    }
+
+    @Test
+    void adaptedMethodValidationInAValidatedService() throws Exception {
+        mvc.perform(get("/public/adapted-service").param("n", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CONSTRAINT_VIOLATION"))
                 .andExpect(jsonPath("$.count").value(1))
@@ -184,6 +203,14 @@ class ProblemDetailsIntegrationTest {
                 .andExpect(jsonPath("$.status").value(415))
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
                 .andExpect(jsonPath("$.type").value(BASE + "UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void unparseableMediaTypeDoesNotEchoTheHeader() throws Exception {
+        mvc.perform(post("/public/users").header(HttpHeaders.CONTENT_TYPE, "invalid/media/type").content("{}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+                .andExpect(jsonPath("$.detail").value("Could not parse Content-Type."));
     }
 
     @Test
