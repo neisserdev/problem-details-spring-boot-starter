@@ -194,6 +194,16 @@ class ProblemDetailsIntegrationTest {
     }
 
     @Test
+    void nestedConstraintViolationOnTransactionCommit() throws Exception {
+        mvc.perform(get("/public/commit-validation"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CONSTRAINT_VIOLATION"))
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value("name"))
+                .andExpect(jsonPath("$.errors[0].detail").isNotEmpty());
+    }
+
+    @Test
     void parameterWithTheWrongType() throws Exception {
         mvc.perform(get("/public/page").param("n", "abc"))
                 .andExpect(status().isBadRequest())
@@ -318,6 +328,14 @@ class ProblemDetailsIntegrationTest {
         mvc.perform(post("/public/login"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void usernameNotFoundOnLoginRespondsInvalidCredentials() throws Exception {
+        mvc.perform(post("/public/login-unknown-user"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.detail", not(containsString("ana@example.com"))));
     }
 
     @Test

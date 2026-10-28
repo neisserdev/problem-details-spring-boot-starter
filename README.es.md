@@ -18,14 +18,14 @@ Requisitos: Java 17 o superior, Spring Boot 4 y entorno servlet (Spring MVC). We
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.3.1</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.3.1")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.4.0")
 ```
 
 El starter solo aporta `spring-boot-autoconfigure`, `slf4j-api`, `jspecify` y la API de Jakarta Validation. Spring MVC, Jackson, Spring Security y Micrometer Tracing son opcionales y se usan cuando el proyecto ya los incluye (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
@@ -274,11 +274,11 @@ problemDetails.detail.UNAUTHORIZED=Une authentification est requise pour accéde
 problemDetails.detail.TYPE_MISMATCH.parameter=Le paramètre ''{0}'' doit être de type {1}
 ```
 
-Los mensajes con argumentos siguen el formato de `MessageFormat`, por lo que las comillas simples se escriben dobles (`''`). El `reason` de `@ResponseStatus` también se resuelve como clave de mensaje, igual que en Spring MVC. Las excepciones de negocio traducen su `detail` con `getDetailMessageCode()`. Los mensajes de validación provienen de Bean Validation y siguen el idioma de la petición.
+Los mensajes con argumentos siguen el formato de `MessageFormat`, por lo que las comillas simples se escriben dobles (`''`). El `reason` de `@ResponseStatus` también se resuelve como clave de mensaje, igual que en Spring MVC. Las excepciones de negocio traducen su `detail` con `getDetailMessageCode()`. Los mensajes de validación se resuelven a través del `MessageSource` de la aplicación (para códigos de validación de Spring como `NotBlank.user.name`) y de Bean Validation en el idioma de la petición.
 
 ## Registro de Errores
 
-Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Los conflictos de datos se registran en DEBUG, los excesos de tamaño de carga (`MaxUploadSizeExceededException`) en WARN y las excepciones no controladas siempre en ERROR. Para ver los 4xx durante el desarrollo:
+Las excepciones de negocio y las anotadas con `@ResponseStatus` se registran en nivel DEBUG si son 4xx y en ERROR con la traza completa si son 5xx. Los errores de validación, formato, conflictos de datos y filtros de seguridad se registran en DEBUG, los excesos de tamaño de carga (`MaxUploadSizeExceededException`) en WARN y las excepciones no controladas siempre en ERROR. Para ver los 4xx durante el desarrollo:
 
 ```yaml
 logging:
@@ -306,17 +306,20 @@ Comportamiento estándar:
 - Petición anónima a recurso protegido: 401 `UNAUTHORIZED` con cabecera `WWW-Authenticate`.
 - Usuario autenticado sin permisos: 403 `ACCESS_DENIED`.
 - `AccessDeniedException` en capa de servicio (ej. mediante `@PreAuthorize`): el manejador la delega a Spring Security, que retorna 401 para usuarios anónimos y 403 para autenticados.
-- `BadCredentialsException` en controlador: 401 `INVALID_CREDENTIALS`.
+- `BadCredentialsException` y `UsernameNotFoundException` en controlador: 401 `INVALID_CREDENTIALS`.
 
-Si la configuración invoca `.exceptionHandling(...)` explícitamente, esta tiene precedencia sobre la autoconfiguración. Para componentes de seguridad que capturan errores antes de llegar al `exceptionHandling` (como `oauth2ResourceServer` con un token caducado o `httpBasic`), es necesario pasar explícitamente la referencia del entry point:
+Si la configuración invoca `.exceptionHandling(...)` explícitamente, esta tiene precedencia sobre la autoconfiguración. Para componentes de seguridad que capturan errores antes de llegar al `exceptionHandling` (como `oauth2ResourceServer` con un token caducado o `httpBasic`), es necesario pasar explícitamente las referencias del entry point y del access denied handler:
 
 ```java
 @Bean
-SecurityFilterChain api(HttpSecurity http, SecurityAuthenticationEntryPoint entryPoint) throws Exception {
+SecurityFilterChain api(HttpSecurity http,
+                        SecurityAuthenticationEntryPoint entryPoint,
+                        SecurityAccessDeniedHandler accessDeniedHandler) throws Exception {
     return http
             .oauth2ResourceServer(oauth -> oauth
                     .jwt(Customizer.withDefaults())
-                    .authenticationEntryPoint(entryPoint))
+                    .authenticationEntryPoint(entryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
             .authorizeHttpRequests(peticiones -> peticiones.anyRequest().authenticated())
             .build();
 }

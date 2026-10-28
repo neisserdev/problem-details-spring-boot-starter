@@ -75,4 +75,16 @@ class ProblemDetailsMessagesTest {
                 .andExpect(status().is(402))
                 .andExpect(jsonPath("$.detail").value("License expired"));
     }
+
+    @Test
+    void resolvesFieldErrorCodesWithTheApplicationMessageSource() throws Exception {
+        mvc.perform(post("/public/users")
+                        .locale(Locale.ENGLISH)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\",\"email\":\"ana@example.com\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.errors[0].field").value("name"))
+                .andExpect(jsonPath("$.errors[0].detail").value("The user name is mandatory"));
+    }
 }

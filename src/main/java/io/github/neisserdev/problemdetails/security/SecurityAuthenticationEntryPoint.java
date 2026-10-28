@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -24,6 +26,8 @@ import io.github.neisserdev.problemdetails.ProblemJsonWriter;
  */
 public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityAuthenticationEntryPoint.class);
+
     private final ProblemJsonWriter writer;
     private final @Nullable String wwwAuthenticate;
 
@@ -39,6 +43,7 @@ public class SecurityAuthenticationEntryPoint implements AuthenticationEntryPoin
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
+        log.debug("Authentication required on {}: {}", request.getRequestURI(), authException.getMessage());
         writer.write(response, request,
                 ErrorCode.UNAUTHORIZED,
                 writer.getFactory().detail(ErrorCode.UNAUTHORIZED,

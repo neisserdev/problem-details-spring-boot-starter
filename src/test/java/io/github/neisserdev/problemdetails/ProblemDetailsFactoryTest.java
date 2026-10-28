@@ -11,10 +11,13 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.context.support.StaticMessageSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 class ProblemDetailsFactoryTest {
 
@@ -352,6 +355,61 @@ class ProblemDetailsFactoryTest {
         Throwable cause = new RuntimeException("root cause");
         ResourceNotFoundException withCause = new ResourceNotFoundException("Failed", cause);
         assertThat(withCause.getCause()).isSameAs(cause);
+    }
+
+    @Test
+    void resourceConflictAndBusinessRuleViolationConstructors() {
+        Throwable cause = new IllegalStateException("root cause");
+
+        ResourceConflictException conflict = new ResourceConflictException("Duplicate email", cause);
+        assertThat(conflict.getProblemType()).isEqualTo(ErrorCode.RESOURCE_CONFLICT);
+        assertThat(conflict.getMessage()).isEqualTo("Duplicate email");
+        assertThat(conflict.getCause()).isSameAs(cause);
+
+        BusinessRuleViolationException ruleViolation = new BusinessRuleViolationException("Order already shipped", cause);
+        assertThat(ruleViolation.getProblemType()).isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATION);
+        assertThat(ruleViolation.getMessage()).isEqualTo("Order already shipped");
+        assertThat(ruleViolation.getCause()).isSameAs(cause);
+    }
+
+    @Test
+    void resolvesMessageSourceResolvableWithTheApplicationMessageSource() {
+        StaticMessageSource messages = new StaticMessageSource();
+        messages.addMessage("NotBlank.user.name", Locale.ENGLISH, "Name is mandatory for {0}");
+        ProblemDetailsFactory factory = new ProblemDetailsFactory("/problems/", messages);
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+
+        DefaultMessageSourceResolvable translated = new DefaultMessageSourceResolvable(
+                new String[] {"NotBlank.user.name", "NotBlank"}, new Object[] {"User"}, "must not be blank");
+        DefaultMessageSourceResolvable withDefaultMessage = new DefaultMessageSourceResolvable(
+                new String[] {"Unknown.code"}, null, "must not be blank");
+        DefaultMessageSourceResolvable withoutDefaultMessage = new DefaultMessageSourceResolvable(
+                new String[] {"Unknown.code"}, null, null);
+
+        assertThat(factory.message(translated, "Invalid value")).isEqualTo("Name is mandatory for User");
+        assertThat(factory.message(withDefaultMessage, "Invalid value")).isEqualTo("must not be blank");
+        assertThat(factory.message(withoutDefaultMessage, "Invalid value")).isEqualTo("Invalid value");
+    }
+
+    @Test
+    void handleBusinessReturnsResponseEntityWithHeadersWithoutRequestContext() {
+        ProblemDetailsFactory factory = new ProblemDetailsFactory();
+        GlobalExceptionHandler handler = new GlobalExceptionHandler(factory, true);
+        BusinessException ex = new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "Try again later") {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public Map<String, String> getHeaders() {
+                return Map.of("Retry-After", "60");
+            }
+        };
+
+        ResponseEntity<ProblemDetail> response = handler.handleBusiness(ex, new MockHttpServletRequest("GET", "/pay"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("60");
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "SERVICE_UNAVAILABLE");
     }
 
     private static boolean hasNoTraceId(ProblemDetailsFactory factory) {

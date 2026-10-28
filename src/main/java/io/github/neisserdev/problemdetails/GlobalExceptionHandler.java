@@ -9,7 +9,6 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
 import jakarta.validation.Path;
@@ -18,7 +17,6 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.TypeMismatchException;
-import org.springframework.context.MessageSourceResolvable;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -48,8 +46,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -84,6 +80,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final String BAD_CREDENTIALS =
             "org.springframework.security.authentication.BadCredentialsException";
+    private static final String USERNAME_NOT_FOUND =
+            "org.springframework.security.core.userdetails.UsernameNotFoundException";
     private static final String ACCESS_DENIED =
             "org.springframework.security.access.AccessDeniedException";
     private static final String AUTHENTICATION =
@@ -97,6 +95,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final String PROP_COUNT = "count";
     private static final String PROP_FIELD = "field";
     private static final String PROP_DETAIL = "detail";
+    private static final int MAX_CAUSE_DEPTH = 16;
 
     private final ProblemDetailsFactory factory;
     private final boolean securityEnabled;
@@ -104,7 +103,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * @param factory         factory of the responses
      * @param securityEnabled when {@code true}, {@code BadCredentialsException}
-     *                        responds {@link ErrorCode#INVALID_CREDENTIALS}
+     *                        and {@code UsernameNotFoundException} respond
+     *                        {@link ErrorCode#INVALID_CREDENTIALS}
      */
     public GlobalExceptionHandler(ProblemDetailsFactory factory, boolean securityEnabled) {
         this.factory = Objects.requireNonNull(factory, "factory");
@@ -123,18 +123,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * @param ex      the business exception
      * @param request the current request
-     * @return the problem with the type of the exception
+     * @return the response with the problem and the headers of the exception
      */
     @ExceptionHandler(BusinessException.class)
-    public ProblemDetail handleBusiness(BusinessException ex, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleBusiness(BusinessException ex, HttpServletRequest request) {
         String code = ex.getProblemType().getCode();
         if (ex.getProblemType().getHttpStatus().is5xxServerError()) {
             log.error("Business exception [{}] on {}: {}", code, request.getRequestURI(), ex.getMessage(), ex);
         } else {
             log.debug("Business exception [{}] on {}: {}", code, request.getRequestURI(), ex.getMessage());
         }
-        applyHeaders(ex.getHeaders());
-        return factory.create(ex, request.getRequestURI());
+        ProblemDetail pd = factory.create(ex, request.getRequestURI());
+        return ResponseEntity.status(pd.getStatus())
+                .headers(headers -> ex.getHeaders().forEach((name, value) -> {
+                    if (name != null && value != null) {
+                        headers.set(name, value);
+                    }
+                }))
+                .body(pd);
     }
 
     /**
@@ -154,8 +160,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Unhandled exceptions. Rethrows the Spring Security ones, responds 409 to
-     * data conflicts, honors {@link ResponseStatus} and responds 500 to the rest.
+     * Unhandled exceptions. Rethrows the Spring Security ones, unwraps nested
+     * {@link ConstraintViolationException}s, responds 409 to data conflicts,
+     * honors {@link ResponseStatus} and responds 500 to the rest.
      *
      * @param ex      the unhandled exception
      * @param request the current request
@@ -167,7 +174,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         String uri = request.getRequestURI();
 
         // A login done in a controller throws it here
-        if (securityEnabled && isInstanceOf(ex, BAD_CREDENTIALS)) {
+        if (securityEnabled && (isInstanceOf(ex, BAD_CREDENTIALS) || isInstanceOf(ex, USERNAME_NOT_FOUND))) {
+            log.debug("Invalid credentials on {}: {}", uri, ex.getMessage());
             return factory.create(ErrorCode.INVALID_CREDENTIALS,
                     factory.detail(ErrorCode.INVALID_CREDENTIALS, "The credentials are not valid"), uri);
         }
@@ -177,14 +185,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             throw ex;
         }
 
+        // JPA entity validation on transaction commit wraps it in RollbackException / TransactionSystemException
+        ConstraintViolationException constraintViolation = findCause(ex, ConstraintViolationException.class);
+        if (constraintViolation != null) {
+            return handleConstraintViolation(constraintViolation, request);
+        }
+
         // The database message is not exposed, it reveals tables and constraints
-        if (isInstanceOf(ex, DATA_INTEGRITY_VIOLATION)) {
+        if (hasCause(ex, DATA_INTEGRITY_VIOLATION)) {
             log.debug("Data integrity violation on {}: {}", uri, ex.getMessage());
             return factory.create(ErrorCode.RESOURCE_CONFLICT,
                     factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_CONFLICT.integrity",
                             "The operation conflicts with existing data"), uri);
         }
-        if (isInstanceOf(ex, OPTIMISTIC_LOCKING_FAILURE)) {
+        if (hasCause(ex, OPTIMISTIC_LOCKING_FAILURE)) {
             log.debug("Optimistic locking failure on {}: {}", uri, ex.getMessage());
             return factory.create(ErrorCode.RESOURCE_CONFLICT,
                     factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "RESOURCE_CONFLICT.concurrency",
@@ -227,9 +241,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         List<Map<String, String>> errors = new ArrayList<>();
         ex.getBindingResult().getFieldErrors().forEach(e ->
-                errors.add(error(e.getField(), messageOf(e, "Invalid value"))));
+                errors.add(error(e.getField(), factory.message(e, "Invalid value"))));
         ex.getBindingResult().getGlobalErrors().forEach(e ->
-                errors.add(error("", messageOf(e, "Invalid data"))));
+                errors.add(error("", factory.message(e, "Invalid data"))));
 
         ProblemDetail pd = validationProblem(ErrorCode.VALIDATION_ERROR, errors,
                 "The submitted data is not valid", uriOf(request));
@@ -295,10 +309,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpMessageNotReadableException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
+        String uri = uriOf(request);
+        log.debug("Malformed request on {}: {}", uri, ex.getMessage());
         ProblemDetail pd = factory.create(
                 ErrorCode.MALFORMED_REQUEST,
                 factory.detail(ErrorCode.MALFORMED_REQUEST, "The request body is malformed or cannot be read"),
-                uriOf(request));
+                uri);
 
         return handleExceptionInternal(ex, pd, headers, ErrorCode.MALFORMED_REQUEST.getHttpStatus(), request);
     }
@@ -308,6 +324,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             TypeMismatchException ex, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
 
+        String uri = uriOf(request);
+        log.debug("Type mismatch on {}: {}", uri, ex.getMessage());
         String detail;
         if (ex instanceof MethodArgumentTypeMismatchException mate && mate.getRequiredType() != null) {
             detail = factory.message(ProblemDetailsFactory.DETAIL_KEY_PREFIX + "TYPE_MISMATCH.parameter",
@@ -317,7 +335,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             detail = factory.detail(ErrorCode.TYPE_MISMATCH, "The provided value does not have the expected type");
         }
 
-        ProblemDetail pd = factory.create(ErrorCode.TYPE_MISMATCH, detail, uriOf(request));
+        ProblemDetail pd = factory.create(ErrorCode.TYPE_MISMATCH, detail, uri);
         return handleExceptionInternal(ex, pd, headers, ErrorCode.TYPE_MISMATCH.getHttpStatus(), request);
     }
 
@@ -414,6 +432,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // Common shape of validation errors, the detail lists the messages
     private ProblemDetail validationProblem(ErrorCode code, List<Map<String, String>> errors,
                                             String genericDetail, @Nullable String uri) {
+        log.debug("Validation error [{}] on {}: {} error(s)", code.getCode(), uri, errors.size());
         String summary = errors.stream()
                 .map(e -> e.get(PROP_DETAIL))
                 .distinct()
@@ -433,30 +452,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return error;
     }
 
-    private static String messageOf(MessageSourceResolvable error, String defaultText) {
-        String message = error.getDefaultMessage();
-        return message != null ? message : defaultText;
-    }
-
     // Errors of one parameter. With prefixFields the fields of a validated bean
     // include the parameter, as in the path of a ConstraintViolation: "user.email"
-    private static void addErrors(ParameterValidationResult result, String parameter,
-                                  boolean prefixFields, List<Map<String, String>> errors) {
+    private void addErrors(ParameterValidationResult result, String parameter,
+                           boolean prefixFields, List<Map<String, String>> errors) {
         if (result instanceof ParameterErrors parameterErrors) {
             parameterErrors.getFieldErrors().forEach(e -> errors.add(error(
                     prefixFields ? parameter + "." + e.getField() : e.getField(),
-                    messageOf(e, "Invalid value"))));
+                    factory.message(e, "Invalid value"))));
             parameterErrors.getGlobalErrors().forEach(e ->
-                    errors.add(error(prefixFields ? parameter : "", messageOf(e, "Invalid data"))));
+                    errors.add(error(prefixFields ? parameter : "", factory.message(e, "Invalid data"))));
         } else {
             result.getResolvableErrors().forEach(e ->
-                    errors.add(error(parameter, messageOf(e, "Invalid value"))));
+                    errors.add(error(parameter, factory.message(e, "Invalid value"))));
         }
     }
 
-    private static void addCrossParameterErrors(MethodValidationResult result, List<Map<String, String>> errors) {
+    private void addCrossParameterErrors(MethodValidationResult result, List<Map<String, String>> errors) {
         result.getCrossParameterValidationResults().forEach(e ->
-                errors.add(error("", messageOf(e, "Invalid parameters"))));
+                errors.add(error("", factory.message(e, "Invalid parameters"))));
     }
 
     // Name seen by the client: the one of the web annotation (@RequestParam,
@@ -547,21 +561,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return sb.toString();
     }
 
-    // DispatcherServlet exposes the current response
-    private static void applyHeaders(@Nullable Map<String, String> headers) {
-        if (headers == null || headers.isEmpty()) {
-            return;
-        }
-        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
-            HttpServletResponse response = attributes.getResponse();
-            if (response != null) {
-                headers.forEach((name, value) -> {
-                    if (name != null && value != null) {
-                        response.setHeader(name, value);
-                    }
-                });
+    private static <T extends Throwable> @Nullable T findCause(Throwable ex, Class<T> target) {
+        Throwable current = ex;
+        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (target.isInstance(current)) {
+                return target.cast(current);
             }
+            current = current.getCause();
         }
+        return null;
+    }
+
+    private static boolean hasCause(Throwable ex, String className) {
+        Throwable current = ex;
+        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (isInstanceOf(current, className)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static boolean isInstanceOf(Throwable ex, String className) {

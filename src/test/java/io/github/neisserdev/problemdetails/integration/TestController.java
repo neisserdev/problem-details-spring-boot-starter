@@ -2,7 +2,9 @@ package io.github.neisserdev.problemdetails.integration;
 
 import java.lang.reflect.Method;
 
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
+import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -12,6 +14,8 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.transaction.TransactionSystemException;
 import org.springframework.validation.beanvalidation.MethodValidationAdapter;
 import org.springframework.validation.method.MethodValidationException;
 import org.springframework.validation.method.MethodValidationResult;
@@ -33,9 +37,11 @@ import io.github.neisserdev.problemdetails.ResourceNotFoundException;
 class TestController {
 
     private final TestService service;
+    private final Validator validator;
 
-    TestController(TestService service) {
+    TestController(TestService service, Validator validator) {
         this.service = service;
+        this.validator = validator;
     }
 
     record NewUser(@NotBlank String name, @NotBlank @Email String email) {
@@ -112,6 +118,14 @@ class TestController {
         throw new OptimisticLockingFailureException("Row was updated or deleted by another transaction");
     }
 
+    // JPA entity validation failure wrapped by TransactionSystemException on commit
+    @GetMapping("/commit-validation")
+    String commitValidation() {
+        var violations = validator.validate(new NewUser("", "valid@example.com"));
+        throw new TransactionSystemException("Could not commit JPA transaction",
+                new ConstraintViolationException(violations));
+    }
+
     @GetMapping("/license")
     String license() {
         throw new LicenseExpiredException();
@@ -130,6 +144,11 @@ class TestController {
     @PostMapping("/login")
     String login() {
         throw new BadCredentialsException("Bad credentials");
+    }
+
+    @PostMapping("/login-unknown-user")
+    String loginUnknownUser() {
+        throw new UsernameNotFoundException("User 'ana@example.com' not found");
     }
 
     // Same as a failed @PreAuthorize

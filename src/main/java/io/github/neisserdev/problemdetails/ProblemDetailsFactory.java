@@ -13,6 +13,7 @@ import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.http.HttpStatus;
@@ -323,6 +324,31 @@ public class ProblemDetailsFactory {
         } catch (IllegalArgumentException e) {
             return defaultText;
         }
+    }
+
+    /**
+     * Resolves a validation or binding error with the application
+     * {@link MessageSource} in the language of the request, falling back to
+     * {@link MessageSourceResolvable#getDefaultMessage()} and then to
+     * {@code defaultText}.
+     *
+     * @param error       resolvable validation or binding error
+     * @param defaultText text when the error has no message
+     * @return the resolved text
+     */
+    public String message(MessageSourceResolvable error, String defaultText) {
+        Objects.requireNonNull(error, "error");
+        String[] codes = error.getCodes();
+        if (codes != null) {
+            for (String code : codes) {
+                String resolved = resolve(code, error.getArguments());
+                if (resolved != null) {
+                    return resolved;
+                }
+            }
+        }
+        String defaultMessage = error.getDefaultMessage();
+        return StringUtils.hasText(defaultMessage) ? defaultMessage : defaultText;
     }
 
     // Application translation first, then the bundled one; null if neither exists

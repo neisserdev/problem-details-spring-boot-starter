@@ -18,14 +18,14 @@ Requirements: Java 17 or later, Spring Boot 4 and a servlet environment (Spring 
 <dependency>
     <groupId>io.github.neisserdev</groupId>
     <artifactId>problem-details-spring-boot-starter</artifactId>
-    <version>1.3.1</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.3.1")
+implementation("io.github.neisserdev:problem-details-spring-boot-starter:1.4.0")
 ```
 
 The starter only brings `spring-boot-autoconfigure`, `slf4j-api`, `jspecify` and the Jakarta Validation API. Spring MVC, Jackson, Spring Security and Micrometer Tracing are optional and are used when the project already includes them (`spring-boot-starter-webmvc`, `spring-boot-starter-security`, etc.).
@@ -245,7 +245,7 @@ All validation paths share the same structure, so clients handle them in a singl
 }
 ```
 
-For request parameters, `field` is the name exposed by the API (`@RequestParam("n")` is serialized as `"n"`). Class-level and cross-parameter validation errors have an empty `field`. Validation messages come from Bean Validation and follow the request language.
+For request parameters, `field` is the name exposed by the API (`@RequestParam("n")` is serialized as `"n"`). Class-level and cross-parameter validation errors have an empty `field`. Validation messages are resolved through the application `MessageSource` (for Spring validation codes such as `NotBlank.user.name`) and Bean Validation in the request language.
 
 ## Internationalization
 
@@ -278,7 +278,7 @@ Messages with arguments follow the `MessageFormat` syntax, so single quotes are 
 
 ## Logging
 
-Business exceptions and exceptions annotated with `@ResponseStatus` are logged at DEBUG level when they are 4xx and at ERROR level, with the full stack trace, when they are 5xx. Data conflicts are logged at DEBUG, payload size limit violations (`MaxUploadSizeExceededException`) at WARN, and unhandled exceptions always at ERROR. To see 4xx errors during development:
+Business exceptions and exceptions annotated with `@ResponseStatus` are logged at DEBUG level when they are 4xx and at ERROR level, with the full stack trace, when they are 5xx. Validation, format, data conflict and security filter errors are logged at DEBUG, payload size limit violations (`MaxUploadSizeExceededException`) at WARN, and unhandled exceptions always at ERROR. To see 4xx errors during development:
 
 ```yaml
 logging:
@@ -306,17 +306,20 @@ Behavior:
 - Anonymous request to a protected resource: 401 `UNAUTHORIZED` with the `WWW-Authenticate` header.
 - Authenticated user without permissions: 403 `ACCESS_DENIED`.
 - `AccessDeniedException` in the service layer (for example from `@PreAuthorize`): the handler rethrows it to Spring Security, which returns 401 for anonymous requests and 403 for authenticated users.
-- `BadCredentialsException` in a controller: 401 `INVALID_CREDENTIALS`.
+- `BadCredentialsException` and `UsernameNotFoundException` in a controller: 401 `INVALID_CREDENTIALS`.
 
-If the configuration calls `.exceptionHandling(...)` explicitly, it takes precedence over the auto-configuration. Security components that handle errors before `exceptionHandling` (such as `oauth2ResourceServer` with an expired token, or `httpBasic`) need the entry point passed explicitly:
+If the configuration calls `.exceptionHandling(...)` explicitly, it takes precedence over the auto-configuration. Security components that handle errors before `exceptionHandling` (such as `oauth2ResourceServer` with an expired token, or `httpBasic`) need the entry point and access denied handler passed explicitly:
 
 ```java
 @Bean
-SecurityFilterChain api(HttpSecurity http, SecurityAuthenticationEntryPoint entryPoint) throws Exception {
+SecurityFilterChain api(HttpSecurity http,
+                        SecurityAuthenticationEntryPoint entryPoint,
+                        SecurityAccessDeniedHandler accessDeniedHandler) throws Exception {
     return http
             .oauth2ResourceServer(oauth -> oauth
                     .jwt(Customizer.withDefaults())
-                    .authenticationEntryPoint(entryPoint))
+                    .authenticationEntryPoint(entryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
             .authorizeHttpRequests(requests -> requests.anyRequest().authenticated())
             .build();
 }

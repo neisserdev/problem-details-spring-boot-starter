@@ -6,6 +6,8 @@ import java.util.Objects;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
@@ -19,6 +21,8 @@ import io.github.neisserdev.problemdetails.ProblemJsonWriter;
  */
 public class SecurityAccessDeniedHandler implements AccessDeniedHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityAccessDeniedHandler.class);
+
     private final ProblemJsonWriter writer;
 
     /**
@@ -31,6 +35,7 @@ public class SecurityAccessDeniedHandler implements AccessDeniedHandler {
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException accessDeniedException) throws IOException {
+        log.debug("Access denied on {}: {}", request.getRequestURI(), accessDeniedException.getMessage());
         writer.write(response, request,
                 ErrorCode.ACCESS_DENIED,
                 writer.getFactory().detail(ErrorCode.ACCESS_DENIED,
